@@ -75,16 +75,25 @@ fn include(i: In) -> PResult<Spanned<Include>> {
     let (i, _) = kw(i, "include")?;
     let (i, pcol) = maybe(i, kw(i, "protocol"))?;
 
-    // We don't commit before the identifier because at this point we could be
-    // looking at a C++ include.
-    let (i, id) = ident(i)?;
-    commit! {
+    let common_end_code = |i, id| {
         let (i, _) = punct(i, ";")?;
         let end = i.loc();
         Ok((i, Spanned::new(Span { start, end }, Include {
             protocol: pcol,
-            id: id.to_owned(),
+            id: id,
         })))
+    };
+
+    if pcol.is_some() { // If we have the protocol keyword, then it can't be a C++ include anymore, and we start committing
+        commit! {
+            let (i, id) = ident(i)?;
+            common_end_code(i, id)
+        }
+    } else { // Otherwise we first parse the ident
+        let (i, id) = ident(i)?;
+        commit! {
+            common_end_code(i, id)
+        }
     }
 }
 
