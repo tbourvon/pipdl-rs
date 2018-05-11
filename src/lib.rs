@@ -628,11 +628,14 @@ pub struct TranslationUnit<'filepath> {
     pub items: Vec<Item<'filepath>>,
 }
 
-fn translation_unit(i: In) -> PResult<TranslationUnit> {
+fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
     // Prelude.
     let mut usings = Vec::new();
     let mut includes = Vec::new();
     let mut cxx_includes = Vec::new();
+
+    let start = i.loc();
+
     drive!(i, any!(
         i, "include or using declaration",
         using(i) => |u| usings.push(u),
@@ -649,16 +652,18 @@ fn translation_unit(i: In) -> PResult<TranslationUnit> {
         return i.expected("item (struct, union, protocol, or namespace)");
     }
 
-    Ok((i, TranslationUnit {
+    let end = i.loc();
+
+    Ok((i, Spanned::new(Span {start, end}, TranslationUnit {
         cxx_includes,
         includes,
         usings,
         items,
-    }))
+    })))
 }
 
 /// Entry point - parses a whole translation unit.
-pub fn parse<'a>(src: &'a str, file: &'a Path) -> Result<TranslationUnit<'a>, Error> {
+pub fn parse<'a>(src: &'a str, file: &'a Path) -> Result<Spanned<'a, TranslationUnit<'a>>, Error> {
     match translation_unit(In::new(src, file)) {
         Ok((_, v)) => Ok(v),
         Err(err) => {
