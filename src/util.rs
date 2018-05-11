@@ -18,7 +18,7 @@ impl<'filepath> Location<'filepath> {
         Location {
             line: 0,
             col: 0,
-            file: file,
+            file,
         }
     }
 
@@ -95,20 +95,25 @@ impl<'filepath> ParserError<'filepath> {
 /// errors and attempting the next option.
 macro_rules! any {
     ($i:ident, $expected:expr, $($e:expr => |$x:ident| $f:expr),+ $(,)*) => {
-        // NOTE: This loop is exclusively used to allow using the break
-        // statement to abort the block early.
-        loop {
-            $(match $e {
-                Ok((i, $x)) => break Ok((i, $f)),
-                Err(e) => {
-                    // This assignment is used to help out with type inference.
-                    let e: $crate::util::ParserError = e;
-                    if e.is_fatal() {
-                        break Err(e);
+        // NOTE: We have to do this sorcery for early returns. Using a loop with breaks makes clippy
+        // mad because the loop never loops and we can't desable the lint because we're not in a function.
+        // Also, we don't directly call the closure otherwise clippy would also complain about that. Yeah.
+        {
+            let mut my_closure = || {
+                $(match $e {
+                    Ok((i, $x)) => return Ok((i, $f)),
+                    Err(e) => {
+                        // This assignment is used to help out with type inference.
+                        let e: $crate::util::ParserError = e;
+                        if e.is_fatal() {
+                            return Err(e);
+                        }
                     }
-                }
-            })+
-            break $i.expected($expected);
+                })+
+                return $i.expected($expected);
+            };
+
+            my_closure()
         }
     };
 
@@ -143,7 +148,7 @@ pub(crate) type PResult<'a, T> = Result<(In<'a>, T), ParserError<'a>>;
 macro_rules! commit {
     ($($e:tt)*) => {
         // Evaluate the inner expression, transforming errors into fatal errors.
-        (|| { $($e)* })().map_err($crate::util::ParserError::make_fatal)
+        ({ $($e)* }).map_err($crate::util::ParserError::make_fatal)
     }
 }
 
@@ -219,26 +224,26 @@ where
 
 /// Repeatedly run f, followed by parsing the seperator sep. Returns an error if
 /// a fatal error is produced while parsing.
-pub(crate) fn sep<'a, F, R>(
+pub(crate) fn sep<'a, Parser, Ret>(
     i: In<'a>,
-    mut f: F,
+    mut parser: Parser,
     sep: &'static str,
-) -> PResult<'a, Vec<R>>
+) -> PResult<'a, Vec<Ret>>
 where
-    F: FnMut(In<'a>) -> PResult<'a, R>,
+    Parser: FnMut(In<'a>) -> PResult<'a, Ret>,
 {
-    let mut v = Vec::new();
-    drive!(i, match f(i) {
-        Ok((i, x)) => {
-            v.push(x);
+    let mut return_vector = Vec::new();
+    drive!(i, match parser(i) {
+        Ok((i, result)) => {
+            return_vector.push(result);
             match punct(i, sep) {
                 Ok(o) => Ok(o),
-                Err(_) => return Ok((i, v)),
+                Err(_) => return Ok((i, return_vector)),
             }
         }
         Err(e) => Err(e),
     });
-    Ok((i, v))
+    Ok((i, return_vector))
 }
 
 /// Skip any leading whitespace, including comments

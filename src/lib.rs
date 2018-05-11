@@ -80,7 +80,7 @@ fn include(i: In) -> PResult<Spanned<Include>> {
         let end = i.loc();
         Ok((i, Spanned::new(Span { start, end }, Include {
             protocol: pcol,
-            id: id,
+            id,
         })))
     };
 
@@ -189,10 +189,10 @@ fn ty(i: In) -> PResult<Spanned<Type>> {
     let start = i.loc();
     let (i, nullable) = maybe(i, kw(i, "nullable"))?;
     let (i, name) = cxx_path_seg(i)?;
-    let (i, array) = maybe(i, (|| {
+    let (i, array) = maybe(i, {
         let (i, _) = punct(i, "[")?;
         commit! { punct(i, "]") }
-    })())?;
+    })?;
 
     let end = i.loc();
 
@@ -589,6 +589,7 @@ fn protocol_item(i: In) -> PResult<Spanned<ProtocolItem>> {
 }
 
 #[derive(Debug)]
+#[allow(large_enum_variant)]
 pub enum Item<'filepath> {
     Struct(Spanned<'filepath, StructItem<'filepath>>),
     Union(Spanned<'filepath, UnionItem<'filepath>>),
@@ -688,7 +689,7 @@ pub fn parse<'a>(src: &'a str, file: &'a Path) -> Result<Spanned<'a, Translation
                                   text, "", off=err.span().start.col + 2);
 
             Err(Error(Box::new(ErrorInner {
-                line: err.span().start.line, column: err.span().start.col, message: message
+                line: err.span().start.line, column: err.span().start.col, message
             })))
         }
     }
