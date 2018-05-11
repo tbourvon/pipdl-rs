@@ -4,6 +4,60 @@
 
 //! Fairly minimal recursive-descent parser helper functions and types.
 
+use std::path::Path;
+
+#[derive(Copy, Clone, Debug)]
+pub struct Location<'filepath> {
+    pub line: usize,
+    pub col: usize,
+    pub file: &'filepath Path,
+}
+
+impl<'filepath> Location<'filepath> {
+    fn new(file: &'filepath Path) -> Self {
+        Location {
+            line: 0,
+            col: 0,
+            file: file,
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.line == 0
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Span<'filepath> {
+    pub start: Location<'filepath>,
+    pub end: Location<'filepath>,
+}
+
+impl<'filepath> Span<'filepath> {
+    pub fn new(file: &'filepath Path) -> Self {
+        Span {
+            start: Location::new(file),
+            end: Location::new(file),
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.start.is_null() && self.end.is_null()
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Spanned<'filepath, T> {
+    pub data: T,
+    pub span: Span<'filepath>,
+}
+
+impl<'filepath, T> Spanned<'filepath, T> {
+    pub fn new(span: Span<'filepath>, data: T) -> Self {
+        Spanned {data, span}
+    }
+}
+
 /// Every bit set but the high bit in usize.
 const OFF_MASK: usize = <usize>::max_value() / 2;
 
@@ -12,23 +66,28 @@ const FATAL_MASK: usize = ! OFF_MASK;
 
 /// An error produced by pipdl
 #[derive(Debug)]
-pub(crate) struct Error {
-    pub(crate) expected: &'static str,
-    off_fatal: usize,
+pub struct ParserError<'filepath> {
+    message: String,
+    fatal: bool,
+    span: Span<'filepath>,
 }
 
-impl Error {
-    pub(crate) fn offset(&self) -> usize {
-        self.off_fatal & OFF_MASK
-    }
-
+impl<'filepath> ParserError<'filepath> {
     pub(crate) fn is_fatal(&self) -> bool {
-        (self.off_fatal & FATAL_MASK) != 0
+        self.fatal
     }
 
     pub(crate) fn make_fatal(mut self) -> Self {
-        self.off_fatal |= FATAL_MASK;
+        self.fatal = true;
         self
+    }
+
+    pub(crate) fn span(&self) -> Span {
+        self.span
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -43,7 +102,7 @@ macro_rules! any {
                 Ok((i, $x)) => break Ok((i, $f)),
                 Err(e) => {
                     // This assignment is used to help out with type inference.
-                    let e: $crate::util::Error = e;
+                    let e: $crate::util::ParserError = e;
                     if e.is_fatal() {
                         break Err(e);
                     }
@@ -77,56 +136,75 @@ macro_rules! drive {
 }
 
 /// The type of error used by internal parsers
-pub(crate) type PResult<'a, T> = Result<(In<'a>, T), Error>;
+pub(crate) type PResult<'a, T> = Result<(In<'a>, T), ParserError<'a>>;
 
 /// Specify that after this point, errors produced while parsing which are not
 /// handled should instead be treated as fatal parsing errors.
 macro_rules! commit {
     ($($e:tt)*) => {
         // Evaluate the inner expression, transforming errors into fatal errors.
-        (|| { $($e)* })().map_err($crate::util::Error::make_fatal)
+        (|| { $($e)* })().map_err($crate::util::ParserError::make_fatal)
     }
 }
 
 /// This datastructure is used as the cursor type into the input source data. It
 /// holds the full source string, and the current offset.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub(crate) struct In<'a> {
     src: &'a str,
-    offset: usize,
+    byte_offset: usize,
+    loc: Location<'a>,
 }
 impl<'a> In<'a> {
-    pub(crate) fn new(s: &'a str) -> Self  {
-        In { src: s, offset: 0 }
+    pub(crate) fn new(s: &'a str, file: &'a Path) -> Self  {
+        In { src: s, byte_offset: 0, loc: Location::new(file) }
     }
 
     /// The remaining string in the source file.
     pub(crate) fn rest(&self) -> &'a str {
-        &self.src[self.offset..]
+        &self.src[self.byte_offset..]
     }
 
-    /// Move the cursor forward by `n` bytes.
-    pub(crate) fn advance(&self, n: usize) -> Self {
-        let offset = self.offset.checked_add(n).unwrap();
-        assert!(offset <= self.src.len());
-        In { src: self.src, offset }
+    /// Move the cursor forward by `n` characters.
+    pub(crate) fn advance(&self, n_chars: usize) -> Self {
+        let mut loc = self.loc;
+
+        let (n_bytes, last_c) = self.rest().char_indices().take(n_chars).inspect(|&(_, character)| {
+            if character == '\n' {
+                loc.line += 1;
+                loc.col = 0;
+            } else {
+                loc.col += 1;
+            }
+        }).last().unwrap();
+
+        let byte_offset = self.byte_offset.checked_add(n_bytes + last_c.len_utf8()).unwrap();
+
+        assert!(byte_offset <= self.src.len());
+
+        In { src: self.src, byte_offset, loc }
     }
 
     /// Produce a new non-fatal error result with the given expected value.
-    pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, Error> {
-        assert!((self.offset & FATAL_MASK) == 0, "Offset is too large!");
-        Err(Error {
-            expected: expected,
-            off_fatal: self.offset,
+    pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, ParserError<'a>> {
+        assert!((self.byte_offset & FATAL_MASK) == 0, "Offset is too large!");
+        Err(ParserError {
+            message: format!("Expected {}", expected),
+            fatal: false,
+            span: Span { start: self.loc, end: self.loc },
         })
+    }
+
+    pub(crate) fn loc(&self) -> Location<'a> {
+        self.loc
     }
 }
 
 /// Repeatedly run f, collecting results into a vec. Returns an error if a fatal
 /// error is produced while parsing.
-pub(crate) fn many<F, R>(i: In, mut f: F) -> PResult<Vec<R>>
+pub(crate) fn many<'r, F, R>(i: In<'r>, mut f: F) -> PResult<'r, Vec<R>>
 where
-    F: FnMut(In) -> PResult<R>,
+    F: FnMut(In<'r>) -> PResult<'r, R>,
 {
     let mut v = Vec::new();
     drive!(i, match f(i) {
@@ -164,7 +242,7 @@ where
 }
 
 /// Skip any leading whitespace, including comments
-pub(crate) fn skip_ws(mut i: In) -> Result<In, Error> {
+pub(crate) fn skip_ws(mut i: In) -> Result<In, ParserError> {
     loop {
         if i.rest().is_empty() {
             break;
@@ -172,25 +250,32 @@ pub(crate) fn skip_ws(mut i: In) -> Result<In, Error> {
 
         let c = i.rest().chars().next().unwrap();
         if c.is_whitespace() {
-            i = i.advance(c.len_utf8());
+            i = i.advance(1);
             continue;
         }
 
         // Line comments
         if i.rest().starts_with("//") {
-            let x = i.rest().find('\n').unwrap_or(i.rest().len());
-            i = i.advance(x);
+            while !i.rest().starts_with('\n') {
+                i = i.advance(1);
+                if i.rest().is_empty() {
+                    break;
+                }
+            }
             continue;
         }
 
         // Block comments
         if i.rest().starts_with("/*") {
-            if let Some(x) = i.rest().find("*/") {
-                i = i.advance(x + 2);
-                continue;
+            while !i.rest().starts_with("*/") {
+                i = i.advance(1);
+                if i.rest().is_empty() {
+                    return i.expected("end of block comment (`*/`)");
+                }
             }
-            return i.advance(i.rest().len())
-                .expected("end of block comment (`*/`)");
+
+            i = i.advance(2);
+            continue;
         }
         break;
     }
@@ -199,41 +284,49 @@ pub(crate) fn skip_ws(mut i: In) -> Result<In, Error> {
 }
 
 /// Read an identifier as a string.
-pub(crate) fn ident(i: In) -> PResult<String> {
+pub(crate) fn ident(i: In) -> PResult<Spanned<String>> {
     let i = skip_ws(i)?;
-    let end = i.rest()
+    let start = i.loc();
+    let (end_char, end_byte) = i.rest()
         .char_indices()
-        .skip_while(|&(idx, c)| match c {
+        .enumerate()
+        .skip_while(|&(_, (b_idx, c))| match c {
             '_' | 'a'...'z' | 'A'...'Z' => true,
-            '0'...'9' if idx != 0 => true,
+            '0'...'9' if b_idx != 0 => true,
             _ => false,
         })
         .next()
-        .map(|x| x.0)
-        .unwrap_or(i.rest().len());
+        .map(|(c_idx, (b_idx, _))| (c_idx, b_idx))
+        .unwrap_or((i.rest().chars().count(), i.rest().len()));
 
-    if end == 0 {
+    if end_byte == 0 {
         return i.expected("identifier");
     }
 
-    Ok((i.advance(end), i.rest()[..end].to_owned()))
+    let j = i.advance(end_char);
+    let end = j.loc();
+
+    Ok((j, Spanned::new(Span {start, end}, i.rest()[..end_byte].to_owned())))
 }
 
 /// Parse a specific keyword.
-pub(crate) fn kw<'a>(i: In<'a>, kw: &'static str) -> PResult<'a, ()> {
+pub(crate) fn kw<'a>(i: In<'a>, kw: &'static str) -> PResult<'a, Spanned<'a, ()>> {
     let (j, id) = ident(i)?;
-    if id == kw {
-        Ok((j, ()))
+    if id.data == kw {
+        Ok((j, Spanned::new(id.span, ())))
     } else {
         i.expected(kw)
     }
 }
 
 /// Parse punctuation.
-pub(crate) fn punct<'a>(i: In<'a>, p: &'static str) -> PResult<'a, ()> {
+pub(crate) fn punct<'a>(i: In<'a>, p: &'static str) -> PResult<'a, Spanned<'a, ()>> {
     let i = skip_ws(i)?;
+    let start = i.loc();
     if i.rest().starts_with(p) {
-        Ok((i.advance(p.len()), ()))
+        let i = i.advance(p.chars().count());
+        let end = i.loc();
+        Ok((i, Spanned::new(Span { start, end }, ())))
     } else {
         i.expected(p)
     }
@@ -256,13 +349,18 @@ pub(crate) fn maybe<'a, T>(
 }
 
 /// Parse a string literal.
-pub(crate) fn string(i: In) -> PResult<String> {
+pub(crate) fn string(i: In) -> PResult<Spanned<String>> {
     let mut s = String::new();
+    let start = i.loc();
     let (i, _) = punct(i, "\"")?;
-    let mut chars = i.rest().char_indices().peekable();
-    while let Some((byte_offset, ch)) = chars.next() {
+    let mut chars = i.rest().chars().enumerate().peekable();
+    while let Some((char_offset, ch)) = chars.next() {
         match ch {
-            '"' => return Ok((i.advance(byte_offset + 1), s)),
+            '"' => {
+                let i = i.advance(char_offset + 1);
+                let end = i.loc();
+                return Ok((i, Spanned::new(Span {start, end}, s)))
+            },
             '\\' => match chars.next() {
                 Some((_, 'n')) => s.push('\n'),
                 Some((_, 'r')) => s.push('\r'),
@@ -271,7 +369,7 @@ pub(crate) fn string(i: In) -> PResult<String> {
                 Some((_, '\'')) => s.push('\''),
                 Some((_, '"')) => s.push('"'),
                 Some((_, '0')) => s.push('\0'),
-                _ => return i.advance(byte_offset)
+                _ => return i.advance(char_offset)
                     .expected("valid escape (\\n, \\r, \\t, \\\\, \\', \\\", or \\0)"),
             }
             x => s.push(x),
