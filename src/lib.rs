@@ -668,7 +668,9 @@ pub fn parse<'a>(src: &'a str, file: &'a Path) -> Result<Spanned<'a, Translation
         Ok((_, v)) => Ok(v),
         Err(err) => {
             // Get the line where the error occurred.
-            let text = src.lines().nth(err.span().start.line).unwrap();
+            println!("{}", err.span().start.line - 1);
+            let text = src.lines().nth(err.span().start.line - 1)
+                          .unwrap_or(""); // Usually happens when the error occurs on the last, empty line
 
             // Format the final error message.
             let message = format!("Parse Error @ {}:{}: {}\n\

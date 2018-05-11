@@ -157,7 +157,7 @@ pub(crate) struct In<'a> {
 }
 impl<'a> In<'a> {
     pub(crate) fn new(s: &'a str, file: &'a Path) -> Self  {
-        In { src: s, byte_offset: 0, loc: Location::new(file) }
+        In { src: s, byte_offset: 0, loc: Location { line: 1, col: 0, file } }
     }
 
     /// The remaining string in the source file.
