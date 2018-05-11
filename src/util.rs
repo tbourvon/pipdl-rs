@@ -176,9 +176,9 @@ impl<'a> In<'a> {
             } else {
                 loc.col += 1;
             }
-        }).last().unwrap();
+        }).last().expect("No characters remaining in advance");
 
-        let byte_offset = self.byte_offset.checked_add(n_bytes + last_c.len_utf8()).unwrap();
+        let byte_offset = self.byte_offset.checked_add(n_bytes + last_c.len_utf8()).expect("Failed checked add");
 
         assert!(byte_offset <= self.src.len());
 
@@ -248,7 +248,7 @@ pub(crate) fn skip_ws(mut i: In) -> Result<In, ParserError> {
             break;
         }
 
-        let c = i.rest().chars().next().unwrap();
+        let c = i.rest().chars().next().expect("No characters remaining when skipping ws");
         if c.is_whitespace() {
             i = i.advance(1);
             continue;

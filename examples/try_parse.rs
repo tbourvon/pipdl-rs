@@ -22,5 +22,5 @@ fn run() -> Result<(), Box<std::error::Error>> {
 }
 
 fn main() {
-    run().unwrap();
+    run().expect("Main error");
 }
