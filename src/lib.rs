@@ -16,7 +16,7 @@ use std::error;
 use std::path::Path;
 
 #[macro_use]
-mod util;
+pub mod util;
 use util::*;
 
 struct ErrorInner {
