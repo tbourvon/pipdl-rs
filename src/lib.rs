@@ -6,6 +6,11 @@
 //! have some featres which most languages would have, such as unicode support
 //! in identifiers, as it is unnecessary for our usecase.
 
+
+// Our code is Clippy aware, so we disable warnings for unknown lints
+// which are triggered when we silence a clippy lint
+#![allow(unknown_lints)]
+
 use std::fmt;
 use std::error;
 use std::path::Path;
