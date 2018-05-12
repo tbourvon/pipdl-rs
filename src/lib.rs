@@ -17,7 +17,7 @@ use std::path::Path;
 
 #[macro_use]
 pub mod util;
-use util::*;
+pub use util::*;
 
 struct ErrorInner {
     line: usize,
