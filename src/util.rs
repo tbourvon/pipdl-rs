@@ -141,7 +141,7 @@ macro_rules! drive {
 }
 
 /// The type of error used by internal parsers
-pub(crate) type PResult<'a, T> = Result<(In<'a>, T), ParserError<'a>>;
+pub(crate) type PResult<'src, 'filepath, T> = Result<(In<'src, 'filepath>, T), ParserError<'filepath>>;
 
 /// Specify that after this point, errors produced while parsing which are not
 /// handled should instead be treated as fatal parsing errors.
@@ -155,18 +155,18 @@ macro_rules! commit {
 /// This datastructure is used as the cursor type into the input source data. It
 /// holds the full source string, and the current offset.
 #[derive(Copy, Clone, Debug)]
-pub(crate) struct In<'a> {
-    src: &'a str,
+pub(crate) struct In<'src, 'filepath> {
+    src: &'src str,
     byte_offset: usize,
-    loc: Location<'a>,
+    loc: Location<'filepath>,
 }
-impl<'a> In<'a> {
-    pub(crate) fn new(s: &'a str, file: &'a Path) -> Self  {
+impl<'src, 'filepath> In<'src, 'filepath> {
+    pub(crate) fn new(s: &'src str, file: &'filepath Path) -> Self  {
         In { src: s, byte_offset: 0, loc: Location { line: 1, col: 0, file } }
     }
 
     /// The remaining string in the source file.
-    pub(crate) fn rest(&self) -> &'a str {
+    pub(crate) fn rest(&self) -> &'src str {
         &self.src[self.byte_offset..]
     }
 
@@ -191,7 +191,7 @@ impl<'a> In<'a> {
     }
 
     /// Produce a new non-fatal error result with the given expected value.
-    pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, ParserError<'a>> {
+    pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, ParserError<'filepath>> {
         assert!((self.byte_offset & FATAL_MASK) == 0, "Offset is too large!");
         Err(ParserError {
             message: format!("Expected {}", expected),
@@ -200,16 +200,16 @@ impl<'a> In<'a> {
         })
     }
 
-    pub(crate) fn loc(&self) -> Location<'a> {
+    pub(crate) fn loc(&self) -> Location<'filepath> {
         self.loc
     }
 }
 
 /// Repeatedly run f, collecting results into a vec. Returns an error if a fatal
 /// error is produced while parsing.
-pub(crate) fn many<'r, F, R>(i: In<'r>, mut f: F) -> PResult<'r, Vec<R>>
+pub(crate) fn many<'src, 'filepath, F, R>(i: In<'src, 'filepath>, mut f: F) -> PResult<'src, 'filepath, Vec<R>>
 where
-    F: FnMut(In<'r>) -> PResult<'r, R>,
+    F: FnMut(In<'src, 'filepath>) -> PResult<'src, 'filepath, R>,
 {
     let mut v = Vec::new();
     drive!(i, match f(i) {
@@ -224,13 +224,13 @@ where
 
 /// Repeatedly run f, followed by parsing the seperator sep. Returns an error if
 /// a fatal error is produced while parsing.
-pub(crate) fn sep<'a, Parser, Ret>(
-    i: In<'a>,
+pub(crate) fn sep<'src, 'filepath, Parser, Ret>(
+    i: In<'src, 'filepath>,
     mut parser: Parser,
     sep: &'static str,
-) -> PResult<'a, Vec<Ret>>
+) -> PResult<'src, 'filepath, Vec<Ret>>
 where
-    Parser: FnMut(In<'a>) -> PResult<'a, Ret>,
+    Parser: FnMut(In<'src, 'filepath>) -> PResult<'src, 'filepath, Ret>,
 {
     let mut return_vector = Vec::new();
     drive!(i, match parser(i) {
@@ -247,7 +247,7 @@ where
 }
 
 /// Skip any leading whitespace, including comments
-pub(crate) fn skip_ws(mut i: In) -> Result<In, ParserError> {
+pub(crate) fn skip_ws<'src, 'filepath>(mut i: In<'src, 'filepath>) -> Result<In<'src, 'filepath>, ParserError<'filepath>> {
     loop {
         if i.rest().is_empty() {
             break;
@@ -289,7 +289,7 @@ pub(crate) fn skip_ws(mut i: In) -> Result<In, ParserError> {
 }
 
 /// Read an identifier as a string.
-pub(crate) fn ident(i: In) -> PResult<Spanned<String>> {
+pub(crate) fn ident<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, String>> {
     let i = skip_ws(i)?;
     let start = i.loc();
     let (end_char, end_byte) = i.rest()
@@ -315,7 +315,7 @@ pub(crate) fn ident(i: In) -> PResult<Spanned<String>> {
 }
 
 /// Parse a specific keyword.
-pub(crate) fn kw<'a>(i: In<'a>, kw: &'static str) -> PResult<'a, Spanned<'a, ()>> {
+pub(crate) fn kw<'src, 'filepath>(i: In<'src, 'filepath>, kw: &'static str) -> PResult<'src, 'filepath, Spanned<'filepath, ()>> {
     let (j, id) = ident(i)?;
     if id.data == kw {
         Ok((j, Spanned::new(id.span, ())))
@@ -325,7 +325,7 @@ pub(crate) fn kw<'a>(i: In<'a>, kw: &'static str) -> PResult<'a, Spanned<'a, ()>
 }
 
 /// Parse punctuation.
-pub(crate) fn punct<'a>(i: In<'a>, p: &'static str) -> PResult<'a, Spanned<'a, ()>> {
+pub(crate) fn punct<'src, 'filepath>(i: In<'src, 'filepath>, p: &'static str) -> PResult<'src, 'filepath, Spanned<'filepath, ()>> {
     let i = skip_ws(i)?;
     let start = i.loc();
     if i.rest().starts_with(p) {
@@ -339,10 +339,10 @@ pub(crate) fn punct<'a>(i: In<'a>, p: &'static str) -> PResult<'a, Spanned<'a, (
 
 /// Try to parse the inner value, and return Some() if it succeeded, None if it
 /// failed non-fatally, and an error if it failed fatally.
-pub(crate) fn maybe<'a, T>(
-    i: In<'a>,
-    r: PResult<'a, T>
-) -> PResult<'a, Option<T>> {
+pub(crate) fn maybe<'src, 'filepath, T>(
+    i: In<'src, 'filepath>,
+    r: PResult<'src, 'filepath, T>
+) -> PResult<'src, 'filepath, Option<T>> {
     match r {
         Ok((i, x)) => Ok((i, Some(x))),
         Err(e) => if e.is_fatal() {
@@ -354,7 +354,7 @@ pub(crate) fn maybe<'a, T>(
 }
 
 /// Parse a string literal.
-pub(crate) fn string(i: In) -> PResult<Spanned<String>> {
+pub(crate) fn string<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, String>> {
     let mut s = String::new();
     let start = i.loc();
     let (i, _) = punct(i, "\"")?;

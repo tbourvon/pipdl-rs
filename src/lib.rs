@@ -59,7 +59,7 @@ pub struct CxxInclude<'filepath> {
     pub file: Spanned<'filepath, String>,
 }
 
-fn cxx_include(i: In) -> PResult<Spanned<CxxInclude>> {
+fn cxx_include<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, CxxInclude<'filepath>>> {
     let start = i.loc();
     let (i, _) = kw(i, "include")?;
     let (i, file) = string(i)?;
@@ -75,7 +75,7 @@ pub struct Include<'filepath> {
     pub id: Spanned<'filepath, String>,
 }
 
-fn include(i: In) -> PResult<Spanned<Include>> {
+fn include<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Include<'filepath>>> {
     let start = i.loc();
     let (i, _) = kw(i, "include")?;
     let (i, pcol) = maybe(i, kw(i, "protocol"))?;
@@ -115,7 +115,7 @@ pub struct CxxPathSeg<'filepath> {
     pub args: Option<Spanned<'filepath, Vec<Spanned<'filepath, String>>>>,
 }
 
-fn template_args(i: In) -> PResult<Spanned<Vec<Spanned<String>>>> {
+fn template_args<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Vec<Spanned<'filepath, String>>>> {
     let start = i.loc();
     let (i, _) = punct(i, "<")?;
     commit! {
@@ -127,7 +127,7 @@ fn template_args(i: In) -> PResult<Spanned<Vec<Spanned<String>>>> {
     }
 }
 
-fn cxx_path_seg(i: In) -> PResult<Spanned<CxxPathSeg>> {
+fn cxx_path_seg<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, CxxPathSeg<'filepath>>> {
     let start = i.loc();
     let (i, id) = ident(i)?;
     let (i, args) = maybe(i, template_args(i))?;
@@ -143,7 +143,7 @@ pub struct CxxPath<'filepath> {
     pub segs: Vec<Spanned<'filepath, CxxPathSeg<'filepath>>>,
 }
 
-fn cxx_path(i: In) -> PResult<Spanned<CxxPath>> {
+fn cxx_path<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, CxxPath<'filepath>>> {
     let start = i.loc();
     let (i, segs) = sep(i, cxx_path_seg, "::")?;
     let end = i.loc();
@@ -158,7 +158,7 @@ pub struct Using<'filepath> {
     pub file: Spanned<'filepath, String>,
 }
 
-fn using(i: In) -> PResult<Spanned<Using>> {
+fn using<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Using<'filepath>>> {
     let start = i.loc();
     let (i, _) = kw(i, "using")?;
     commit! {
@@ -190,7 +190,7 @@ pub struct Type<'filepath> {
     pub is_array: Option<Spanned<'filepath, ()>>,
 }
 
-fn ty(i: In) -> PResult<Spanned<Type>> {
+fn ty<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Type<'filepath>>> {
     let start = i.loc();
     let (i, nullable) = maybe(i, kw(i, "nullable"))?;
     let (i, name) = cxx_path_seg(i)?;
@@ -211,7 +211,7 @@ fn ty(i: In) -> PResult<Spanned<Type>> {
     )))
 }
 
-fn component(i: In) -> PResult<Spanned<Type>> {
+fn component<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Type<'filepath>>> {
     let (i, ty) = ty(i)?;
     commit! {
         let (i, _) = punct(i, ";")?;
@@ -225,7 +225,7 @@ pub struct UnionItem<'filepath> {
     pub components: Vec<Spanned<'filepath, Type<'filepath>>>,
 }
 
-fn union_item(i: In) -> PResult<Spanned<UnionItem>> {
+fn union_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, UnionItem<'filepath>>> {
     let start = i.loc();
     let (i, _) = kw(i, "union")?;
     commit! {
@@ -250,7 +250,7 @@ pub struct Field<'filepath> {
     pub name: Spanned<'filepath, String>,
 }
 
-fn field(i: In) -> PResult<Spanned<Field>> {
+fn field<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Field<'filepath>>> {
     let start = i.loc();
     let (i, ty) = ty(i)?;
     commit! {
@@ -267,7 +267,7 @@ pub struct StructItem<'filepath> {
     pub fields: Vec<Spanned<'filepath, Field<'filepath>>>,
 }
 
-fn struct_item(i: In) -> PResult<Spanned<StructItem>> {
+fn struct_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, StructItem<'filepath>>> {
     let start = i.loc();
     let (i, _) = kw(i, "struct")?;
     commit! {
@@ -293,7 +293,7 @@ pub enum Nesting {
     InsideCpow,
 }
 
-fn nesting(i: In) -> PResult<Spanned<Nesting>> {
+fn nesting<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Nesting>> {
     let start = i.loc();
     let (i, nesting) = any!(
         i, "nesting specifier (not, inside_sync, or inside_cpow)",
@@ -312,7 +312,7 @@ pub enum Priority {
     Input,
 }
 
-fn priority(i: In) -> PResult<Spanned<Priority>> {
+fn priority<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Priority>> {
     let start = i.loc();
     let (i, priority) = any!(
         i, "priority specifier (normal, high, or input)",
@@ -338,7 +338,7 @@ pub enum MessageModifier {
     CompressAll,
 }
 
-fn message_modifier(i: In) -> PResult<Spanned<MessageModifier>> {
+fn message_modifier<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, MessageModifier>> {
     let start = i.loc();
     let (i, message_modifier) = any!(
         i, "message modifier (verify, compress, or compressall)",
@@ -356,7 +356,7 @@ pub struct Param<'filepath> {
     pub name: Spanned<'filepath, String>,
 }
 
-fn param(i: In) -> PResult<Spanned<Param>> {
+fn param<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Param<'filepath>>> {
     let start = i.loc();
     let (i, ty) = ty(i)?;
     commit! {
@@ -377,7 +377,7 @@ pub struct MessageDecl<'filepath> {
     pub modifiers: Vec<Spanned<'filepath, MessageModifier>>,
 }
 
-fn returns(i: In) -> PResult<Spanned<Vec<Spanned<Param>>>> {
+fn returns<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Vec<Spanned<'filepath, Param<'filepath>>>>> {
     let start = i.loc();
     let (i, _) = kw(i, "returns")?;
     commit! {
@@ -389,7 +389,7 @@ fn returns(i: In) -> PResult<Spanned<Vec<Spanned<Param>>>> {
     }
 }
 
-fn message_nested(i: In) -> PResult<Spanned<Spanned<Nesting>>> {
+fn message_nested<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Spanned<'filepath, Nesting>>> {
     let start = i.loc();
     let (i, _) = kw(i, "nested")?;
     commit! {
@@ -403,7 +403,7 @@ fn message_nested(i: In) -> PResult<Spanned<Spanned<Nesting>>> {
     }
 }
 
-fn message_prio(i: In) -> PResult<Spanned<Spanned<Priority>>> {
+fn message_prio<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Spanned<'filepath, Priority>>> {
     let start = i.loc();
     let (i, _) = kw(i, "prio")?;
     commit! {
@@ -417,7 +417,7 @@ fn message_prio(i: In) -> PResult<Spanned<Spanned<Priority>>> {
     }
 }
 
-fn message_decl(i: In) -> PResult<Spanned<MessageDecl>> {
+fn message_decl<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, MessageDecl<'filepath>>> {
     let start = i.loc();
 
     // XXX(nika): This is really gross, maybe clean it up?
@@ -468,7 +468,7 @@ pub enum Direction {
     Both,
 }
 
-fn direction(i: In) -> PResult<Spanned<Direction>> {
+fn direction<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Direction>> {
     let start = i.loc();
     let (i, direction) = any!(
         i, "direction (child, parent, or both)",
@@ -486,7 +486,7 @@ pub struct MessageGroup<'filepath> {
     pub decls: Vec<Spanned<'filepath, MessageDecl<'filepath>>>,
 }
 
-fn message_group(i: In) -> PResult<Spanned<MessageGroup>> {
+fn message_group<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, MessageGroup<'filepath>>> {
     let start = i.loc();
     let (i, direction) = direction(i)?;
     commit! {
@@ -512,7 +512,7 @@ pub struct ProtocolItem<'filepath> {
     pub groups: Vec<Spanned<'filepath, MessageGroup<'filepath>>>,
 }
 
-fn protocol_nested(i: In) -> PResult<(Spanned<Nesting>, Spanned<SendSemantics>)> {
+fn protocol_nested<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, (Spanned<'filepath, Nesting>, Spanned<'filepath, SendSemantics>)> {
     let (i, _) = kw(i, "nested")?;
     commit! {
         let (i, _) = punct(i, "(")?;
@@ -530,7 +530,7 @@ fn protocol_nested(i: In) -> PResult<(Spanned<Nesting>, Spanned<SendSemantics>)>
     }
 }
 
-fn managers(i: In) -> PResult<Spanned<Vec<Spanned<String>>>> {
+fn managers<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Vec<Spanned<'filepath, String>>>> {
     let start = i.loc();
     let (i, _) = kw(i, "manager")?;
     commit! {
@@ -541,7 +541,7 @@ fn managers(i: In) -> PResult<Spanned<Vec<Spanned<String>>>> {
     }
 }
 
-fn manages(i: In) -> PResult<Spanned<Spanned<String>>> {
+fn manages<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Spanned<'filepath, String>>> {
     let start = i.loc();
     let (i, _) = kw(i, "manages")?;
     commit! {
@@ -552,7 +552,7 @@ fn manages(i: In) -> PResult<Spanned<Spanned<String>>> {
     }
 }
 
-fn protocol_item(i: In) -> PResult<Spanned<ProtocolItem>> {
+fn protocol_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, ProtocolItem<'filepath>>> {
     let start = i.loc();
     let mut ss_span = Span::new(i.loc().file);
 
@@ -601,7 +601,7 @@ pub enum Item<'filepath> {
     Protocol(Spanned<'filepath, ProtocolItem<'filepath>>),
 }
 
-fn namespace(i: In) -> PResult<Vec<Item>> {
+fn namespace<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Vec<Item<'filepath>>> {
     let (i, _) = kw(i, "namespace")?;
 
     commit! {
@@ -623,7 +623,7 @@ fn namespace(i: In) -> PResult<Vec<Item>> {
     }
 }
 
-fn items(i: In) -> PResult<Vec<Item>> {
+fn items<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Vec<Item<'filepath>>> {
     let mut v = Vec::new();
     drive!(i, any!(
         i, "item (struct, union, protocol, or namespace)",
@@ -643,7 +643,7 @@ pub struct TranslationUnit<'filepath> {
     pub items: Vec<Item<'filepath>>,
 }
 
-fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
+fn translation_unit<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, TranslationUnit<'filepath>>> {
     // Prelude.
     let mut usings = Vec::new();
     let mut includes = Vec::new();
@@ -678,7 +678,7 @@ fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
 }
 
 /// Entry point - parses a whole translation unit.
-pub fn parse<'a>(src: &'a str, file: &'a Path) -> Result<Spanned<'a, TranslationUnit<'a>>, Error> {
+pub fn parse<'src, 'filepath>(src: &'src str, file: &'filepath Path) -> Result<Spanned<'filepath, TranslationUnit<'filepath>>, Error> {
     match translation_unit(In::new(src, file)) {
         Ok((_, v)) => Ok(v),
         Err(err) => {
