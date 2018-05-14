@@ -54,7 +54,7 @@ impl fmt::Debug for Error {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CxxInclude {
     pub file: Spanned<String>,
 }
@@ -70,7 +70,7 @@ fn cxx_include(i: In) -> PResult<Spanned<CxxInclude>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Include {
     pub protocol: Option<Spanned<()>>,
     pub id: Spanned<String>,
@@ -105,14 +105,14 @@ fn include(i: In) -> PResult<Spanned<Include>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CxxTypeKind {
     Class,
     Struct,
     None,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CxxPathSeg {
     pub id: Spanned<String>,
     pub args: Option<Spanned<Vec<Spanned<String>>>>,
@@ -141,7 +141,7 @@ fn cxx_path_seg(i: In) -> PResult<Spanned<CxxPathSeg>> {
     })))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CxxPath {
     pub segs: Vec<Spanned<CxxPathSeg>>,
 }
@@ -153,7 +153,7 @@ fn cxx_path(i: In) -> PResult<Spanned<CxxPath>> {
     Ok((i, Spanned::new(Span { start, end }, CxxPath { segs })))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Using {
     pub refcounted: Option<Spanned<()>>,
     pub kind: Spanned<CxxTypeKind>,
@@ -186,7 +186,7 @@ fn using(i: In) -> PResult<Spanned<Using>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Type {
     pub is_nullable: Option<Spanned<()>>,
     pub name: Spanned<CxxPathSeg>,
@@ -222,7 +222,7 @@ fn component(i: In) -> PResult<Spanned<Type>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnionItem {
     pub path: Vec<Spanned<String>>,
     pub components: Vec<Spanned<Type>>,
@@ -247,7 +247,7 @@ fn union_item(i: In) -> PResult<Spanned<UnionItem>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Field {
     pub ty: Spanned<Type>,
     pub name: Spanned<String>,
@@ -264,7 +264,7 @@ fn field(i: In) -> PResult<Spanned<Field>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructItem {
     pub path: Vec<Spanned<String>>,
     pub fields: Vec<Spanned<Field>>,
@@ -289,7 +289,7 @@ fn struct_item(i: In) -> PResult<Spanned<StructItem>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Nesting {
     None,
     InsideSync,
@@ -309,7 +309,7 @@ fn nesting(i: In) -> PResult<Spanned<Nesting>> {
     Ok((i, Spanned::new(Span {start, end}, nesting)))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Priority {
     Normal,
     High,
@@ -329,14 +329,14 @@ fn priority(i: In) -> PResult<Spanned<Priority>> {
     Ok((i, Spanned::new(Span {start, end}, priority)))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SendSemantics {
     Async,
     Sync,
     Intr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MessageModifier {
     Verify,
     Compress,
@@ -356,7 +356,7 @@ fn message_modifier(i: In) -> PResult<Spanned<MessageModifier>> {
     Ok((i, Spanned::new(Span {start, end}, message_modifier)))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Param {
     pub ty: Spanned<Type>,
     pub name: Spanned<String>,
@@ -372,7 +372,7 @@ fn param(i: In) -> PResult<Spanned<Param>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageDecl {
     pub nested: Option<Spanned<Spanned<Nesting>>>,
     pub priority: Option<Spanned<Spanned<Priority>>>,
@@ -467,7 +467,7 @@ fn message_decl(i: In) -> PResult<Spanned<MessageDecl>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Direction {
     ToChild,
     ToParent,
@@ -487,7 +487,7 @@ fn direction(i: In) -> PResult<Spanned<Direction>> {
     Ok((i, Spanned::new(Span { start, end }, direction)))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageGroup {
     pub direction: Spanned<Direction>,
     pub decls: Vec<Spanned<MessageDecl>>,
@@ -509,7 +509,7 @@ fn message_group(i: In) -> PResult<Spanned<MessageGroup>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProtocolItem {
     pub path: Vec<Spanned<String>>,
     pub nested: Option<Spanned<Nesting>>,
@@ -601,7 +601,7 @@ fn protocol_item(i: In) -> PResult<Spanned<ProtocolItem>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(large_enum_variant)]
 pub enum Item {
     Struct(Spanned<StructItem>),
@@ -643,7 +643,7 @@ fn items(i: In) -> PResult<Vec<Item>> {
     Ok((i, v))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TranslationUnit {
     pub cxx_includes: Vec<Spanned<CxxInclude>>,
     pub includes: Vec<Spanned<Include>>,
