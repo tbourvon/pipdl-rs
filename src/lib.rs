@@ -55,30 +55,33 @@ impl fmt::Debug for Error {
 }
 
 #[derive(Debug)]
-pub struct CxxInclude<'filepath> {
-    pub file: Spanned<'filepath, String>,
+pub struct CxxInclude {
+    pub file: Spanned<String>,
 }
 
-fn cxx_include<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, CxxInclude<'filepath>>> {
+fn cxx_include(i: In) -> PResult<Spanned<CxxInclude>> {
     let start = i.loc();
     let (i, _) = kw(i, "include")?;
     let (i, file) = string(i)?;
     commit! {
         let (i, _) = punct(i, ";")?;
-        Ok((i, Spanned::new(Span { start, end: i.loc() }, CxxInclude { file })))
+        let end = i.loc();
+        Ok((i.clone(), Spanned::new(Span { start, end }, CxxInclude { file })))
     }
 }
 
 #[derive(Debug)]
-pub struct Include<'filepath> {
-    pub protocol: Option<Spanned<'filepath, ()>>,
-    pub id: Spanned<'filepath, String>,
+pub struct Include {
+    pub protocol: Option<Spanned<()>>,
+    pub id: Spanned<String>,
 }
 
-fn include<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Include<'filepath>>> {
+fn include(i: In) -> PResult<Spanned<Include>> {
     let start = i.loc();
     let (i, _) = kw(i, "include")?;
-    let (i, pcol) = maybe(i, kw(i, "protocol"))?;
+    let (i, pcol) = maybe(i.clone(), kw(i, "protocol"))?;
+
+    let pcol_is_some = pcol.is_some();
 
     let common_end_code = |i, id| {
         let (i, _) = punct(i, ";")?;
@@ -89,7 +92,7 @@ fn include<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, 
         })))
     };
 
-    if pcol.is_some() { // If we have the protocol keyword, then it can't be a C++ include anymore, and we start committing
+    if pcol_is_some { // If we have the protocol keyword, then it can't be a C++ include anymore, and we start committing
         commit! {
             let (i, id) = ident(i)?;
             common_end_code(i, id)
@@ -110,12 +113,12 @@ pub enum CxxTypeKind {
 }
 
 #[derive(Debug)]
-pub struct CxxPathSeg<'filepath> {
-    pub id: Spanned<'filepath, String>,
-    pub args: Option<Spanned<'filepath, Vec<Spanned<'filepath, String>>>>,
+pub struct CxxPathSeg {
+    pub id: Spanned<String>,
+    pub args: Option<Spanned<Vec<Spanned<String>>>>,
 }
 
-fn template_args<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Vec<Spanned<'filepath, String>>>> {
+fn template_args(i: In) -> PResult<Spanned<Vec<Spanned<String>>>> {
     let start = i.loc();
     let (i, _) = punct(i, "<")?;
     commit! {
@@ -127,10 +130,10 @@ fn template_args<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'file
     }
 }
 
-fn cxx_path_seg<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, CxxPathSeg<'filepath>>> {
+fn cxx_path_seg(i: In) -> PResult<Spanned<CxxPathSeg>> {
     let start = i.loc();
     let (i, id) = ident(i)?;
-    let (i, args) = maybe(i, template_args(i))?;
+    let (i, args) = maybe(i.clone(), template_args(i))?;
     let end = i.loc();
     Ok((i, Spanned::new(Span { start, end }, CxxPathSeg {
         id,
@@ -139,11 +142,11 @@ fn cxx_path_seg<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filep
 }
 
 #[derive(Debug)]
-pub struct CxxPath<'filepath> {
-    pub segs: Vec<Spanned<'filepath, CxxPathSeg<'filepath>>>,
+pub struct CxxPath {
+    pub segs: Vec<Spanned<CxxPathSeg>>,
 }
 
-fn cxx_path<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, CxxPath<'filepath>>> {
+fn cxx_path(i: In) -> PResult<Spanned<CxxPath>> {
     let start = i.loc();
     let (i, segs) = sep(i, cxx_path_seg, "::")?;
     let end = i.loc();
@@ -151,24 +154,24 @@ fn cxx_path<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath,
 }
 
 #[derive(Debug)]
-pub struct Using<'filepath> {
-    pub refcounted: Option<Spanned<'filepath, ()>>,
-    pub kind: Spanned<'filepath, CxxTypeKind>,
-    pub ty: Spanned<'filepath, CxxPath<'filepath>>,
-    pub file: Spanned<'filepath, String>,
+pub struct Using {
+    pub refcounted: Option<Spanned<()>>,
+    pub kind: Spanned<CxxTypeKind>,
+    pub ty: Spanned<CxxPath>,
+    pub file: Spanned<String>,
 }
 
-fn using<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Using<'filepath>>> {
+fn using(i: In) -> PResult<Spanned<Using>> {
     let start = i.loc();
     let (i, _) = kw(i, "using")?;
     commit! {
-        let (i, refcounted) = maybe(i, kw(i, "refcounted"))?;
+        let (i, refcounted) = maybe(i.clone(), kw(i, "refcounted"))?;
         let kw_start = i.loc();
         let (i, kind) = any!(
             i, "struct or class keyword",
-            kw(i, "struct") => CxxTypeKind::Struct,
-            kw(i, "class") => CxxTypeKind::Class,
-            Ok((i, ())) => CxxTypeKind::None,
+            kw(i.clone(), "struct") => CxxTypeKind::Struct,
+            kw(i.clone(), "class") => CxxTypeKind::Class,
+            Ok((i.clone(), ())) => CxxTypeKind::None,
         )?;
         let kw_end = i.loc();
 
@@ -184,17 +187,17 @@ fn using<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Sp
 }
 
 #[derive(Debug)]
-pub struct Type<'filepath> {
-    pub is_nullable: Option<Spanned<'filepath, ()>>,
-    pub name: Spanned<'filepath, CxxPathSeg<'filepath>>,
-    pub is_array: Option<Spanned<'filepath, ()>>,
+pub struct Type {
+    pub is_nullable: Option<Spanned<()>>,
+    pub name: Spanned<CxxPathSeg>,
+    pub is_array: Option<Spanned<()>>,
 }
 
-fn ty<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Type<'filepath>>> {
+fn ty(i: In) -> PResult<Spanned<Type>> {
     let start = i.loc();
-    let (i, nullable) = maybe(i, kw(i, "nullable"))?;
+    let (i, nullable) = maybe(i.clone(), kw(i, "nullable"))?;
     let (i, name) = cxx_path_seg(i)?;
-    let (i, array) = maybe(i, {
+    let (i, array) = maybe(i.clone(), {
         let (i, _) = punct(i, "[")?;
         commit! { punct(i, "]") }
     })?;
@@ -211,7 +214,7 @@ fn ty<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spann
     )))
 }
 
-fn component<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Type<'filepath>>> {
+fn component(i: In) -> PResult<Spanned<Type>> {
     let (i, ty) = ty(i)?;
     commit! {
         let (i, _) = punct(i, ";")?;
@@ -220,12 +223,12 @@ fn component<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath
 }
 
 #[derive(Debug)]
-pub struct UnionItem<'filepath> {
-    pub path: Vec<Spanned<'filepath, String>>,
-    pub components: Vec<Spanned<'filepath, Type<'filepath>>>,
+pub struct UnionItem {
+    pub path: Vec<Spanned<String>>,
+    pub components: Vec<Spanned<Type>>,
 }
 
-fn union_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, UnionItem<'filepath>>> {
+fn union_item(i: In) -> PResult<Spanned<UnionItem>> {
     let start = i.loc();
     let (i, _) = kw(i, "union")?;
     commit! {
@@ -245,12 +248,12 @@ fn union_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepat
 }
 
 #[derive(Debug)]
-pub struct Field<'filepath> {
-    pub ty: Spanned<'filepath, Type<'filepath>>,
-    pub name: Spanned<'filepath, String>,
+pub struct Field {
+    pub ty: Spanned<Type>,
+    pub name: Spanned<String>,
 }
 
-fn field<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Field<'filepath>>> {
+fn field(i: In) -> PResult<Spanned<Field>> {
     let start = i.loc();
     let (i, ty) = ty(i)?;
     commit! {
@@ -262,12 +265,12 @@ fn field<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Sp
 }
 
 #[derive(Debug)]
-pub struct StructItem<'filepath> {
-    pub path: Vec<Spanned<'filepath, String>>,
-    pub fields: Vec<Spanned<'filepath, Field<'filepath>>>,
+pub struct StructItem {
+    pub path: Vec<Spanned<String>>,
+    pub fields: Vec<Spanned<Field>>,
 }
 
-fn struct_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, StructItem<'filepath>>> {
+fn struct_item(i: In) -> PResult<Spanned<StructItem>> {
     let start = i.loc();
     let (i, _) = kw(i, "struct")?;
     commit! {
@@ -293,13 +296,14 @@ pub enum Nesting {
     InsideCpow,
 }
 
-fn nesting<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Nesting>> {
+#[allow(needless_pass_by_value)]
+fn nesting(i: In) -> PResult<Spanned<Nesting>> {
     let start = i.loc();
     let (i, nesting) = any!(
         i, "nesting specifier (not, inside_sync, or inside_cpow)",
-        kw(i, "not") => Nesting::None,
-        kw(i, "inside_sync") => Nesting::InsideSync,
-        kw(i, "inside_cpow") => Nesting::InsideCpow,
+        kw(i.clone(), "not") => Nesting::None,
+        kw(i.clone(), "inside_sync") => Nesting::InsideSync,
+        kw(i.clone(), "inside_cpow") => Nesting::InsideCpow,
     )?;
     let end = i.loc();
     Ok((i, Spanned::new(Span {start, end}, nesting)))
@@ -312,13 +316,14 @@ pub enum Priority {
     Input,
 }
 
-fn priority<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Priority>> {
+#[allow(needless_pass_by_value)]
+fn priority(i: In) -> PResult<Spanned<Priority>> {
     let start = i.loc();
     let (i, priority) = any!(
         i, "priority specifier (normal, high, or input)",
-        kw(i, "normal") => Priority::Normal,
-        kw(i, "high") => Priority::High,
-        kw(i, "input") => Priority::Input,
+        kw(i.clone(), "normal") => Priority::Normal,
+        kw(i.clone(), "high") => Priority::High,
+        kw(i.clone(), "input") => Priority::Input,
     )?;
     let end = i.loc();
     Ok((i, Spanned::new(Span {start, end}, priority)))
@@ -338,25 +343,26 @@ pub enum MessageModifier {
     CompressAll,
 }
 
-fn message_modifier<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, MessageModifier>> {
+#[allow(needless_pass_by_value)]
+fn message_modifier(i: In) -> PResult<Spanned<MessageModifier>> {
     let start = i.loc();
     let (i, message_modifier) = any!(
         i, "message modifier (verify, compress, or compressall)",
-        kw(i, "verify") => MessageModifier::Verify,
-        kw(i, "compress") => MessageModifier::Compress,
-        kw(i, "compressall") => MessageModifier::CompressAll,
+        kw(i.clone(), "verify") => MessageModifier::Verify,
+        kw(i.clone(), "compress") => MessageModifier::Compress,
+        kw(i.clone(), "compressall") => MessageModifier::CompressAll,
     )?;
     let end = i.loc();
     Ok((i, Spanned::new(Span {start, end}, message_modifier)))
 }
 
 #[derive(Debug)]
-pub struct Param<'filepath> {
-    pub ty: Spanned<'filepath, Type<'filepath>>,
-    pub name: Spanned<'filepath, String>,
+pub struct Param {
+    pub ty: Spanned<Type>,
+    pub name: Spanned<String>,
 }
 
-fn param<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Param<'filepath>>> {
+fn param(i: In) -> PResult<Spanned<Param>> {
     let start = i.loc();
     let (i, ty) = ty(i)?;
     commit! {
@@ -367,17 +373,17 @@ fn param<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Sp
 }
 
 #[derive(Debug)]
-pub struct MessageDecl<'filepath> {
-    pub nested: Option<Spanned<'filepath, Spanned<'filepath, Nesting>>>,
-    pub priority: Option<Spanned<'filepath, Spanned<'filepath, Priority>>>,
-    pub send_semantics: Spanned<'filepath, SendSemantics>,
-    pub name: Spanned<'filepath, String>,
-    pub params: Vec<Spanned<'filepath, Param<'filepath>>>,
-    pub returns: Option<Spanned<'filepath, Vec<Spanned<'filepath, Param<'filepath>>>>>,
-    pub modifiers: Vec<Spanned<'filepath, MessageModifier>>,
+pub struct MessageDecl {
+    pub nested: Option<Spanned<Spanned<Nesting>>>,
+    pub priority: Option<Spanned<Spanned<Priority>>>,
+    pub send_semantics: Spanned<SendSemantics>,
+    pub name: Spanned<String>,
+    pub params: Vec<Spanned<Param>>,
+    pub returns: Option<Spanned<Vec<Spanned<Param>>>>,
+    pub modifiers: Vec<Spanned<MessageModifier>>,
 }
 
-fn returns<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Vec<Spanned<'filepath, Param<'filepath>>>>> {
+fn returns(i: In) -> PResult<Spanned<Vec<Spanned<Param>>>> {
     let start = i.loc();
     let (i, _) = kw(i, "returns")?;
     commit! {
@@ -389,7 +395,7 @@ fn returns<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, 
     }
 }
 
-fn message_nested<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Spanned<'filepath, Nesting>>> {
+fn message_nested(i: In) -> PResult<Spanned<Spanned<Nesting>>> {
     let start = i.loc();
     let (i, _) = kw(i, "nested")?;
     commit! {
@@ -403,7 +409,7 @@ fn message_nested<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'fil
     }
 }
 
-fn message_prio<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Spanned<'filepath, Priority>>> {
+fn message_prio(i: In) -> PResult<Spanned<Spanned<Priority>>> {
     let start = i.loc();
     let (i, _) = kw(i, "prio")?;
     commit! {
@@ -417,7 +423,7 @@ fn message_prio<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filep
     }
 }
 
-fn message_decl<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, MessageDecl<'filepath>>> {
+fn message_decl(i: In) -> PResult<Spanned<MessageDecl>> {
     let start = i.loc();
 
     // XXX(nika): This is really gross, maybe clean it up?
@@ -425,16 +431,16 @@ fn message_decl<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filep
     let mut priority = None;
     drive!(i, any!(
         i, "message prefix",
-        message_prio(i) => |p| priority = Some(p),
-        message_nested(i) => |n| nested = Some(n),
+        message_prio(i.clone()) => |p| priority = Some(p),
+        message_nested(i.clone()) => |n| nested = Some(n),
     ));
 
     let send_semantics_start = i.loc();
     let (i, send_semantics) = any!(
         i, "send semantics (async, sync, or intr)",
-        kw(i, "async") => SendSemantics::Async,
-        kw(i, "sync") => SendSemantics::Sync,
-        kw(i, "intr") => SendSemantics::Intr,
+        kw(i.clone(), "async") => SendSemantics::Async,
+        kw(i.clone(), "sync") => SendSemantics::Sync,
+        kw(i.clone(), "intr") => SendSemantics::Intr,
     )?;
     let send_semantics_end = i.loc();
 
@@ -443,7 +449,7 @@ fn message_decl<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filep
         let (i, _) = punct(i, "(")?;
         let (i, params) = sep(i, param, ",")?;
         let (i, _) = punct(i, ")")?;
-        let (i, returns) = maybe(i, returns(i))?;
+        let (i, returns) = maybe(i.clone(), returns(i))?;
         let (i, modifiers) = many(i, message_modifier)?;
         let (i, _) = punct(i, ";")?;
 
@@ -468,25 +474,26 @@ pub enum Direction {
     Both,
 }
 
-fn direction<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Direction>> {
+#[allow(needless_pass_by_value)]
+fn direction(i: In) -> PResult<Spanned<Direction>> {
     let start = i.loc();
     let (i, direction) = any!(
         i, "direction (child, parent, or both)",
-        kw(i, "child") => Direction::ToChild,
-        kw(i, "parent") => Direction::ToParent,
-        kw(i, "both") => Direction::Both,
+        kw(i.clone(), "child") => Direction::ToChild,
+        kw(i.clone(), "parent") => Direction::ToParent,
+        kw(i.clone(), "both") => Direction::Both,
     )?;
     let end = i.loc();
     Ok((i, Spanned::new(Span { start, end }, direction)))
 }
 
 #[derive(Debug)]
-pub struct MessageGroup<'filepath> {
-    pub direction: Spanned<'filepath, Direction>,
-    pub decls: Vec<Spanned<'filepath, MessageDecl<'filepath>>>,
+pub struct MessageGroup {
+    pub direction: Spanned<Direction>,
+    pub decls: Vec<Spanned<MessageDecl>>,
 }
 
-fn message_group<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, MessageGroup<'filepath>>> {
+fn message_group(i: In) -> PResult<Spanned<MessageGroup>> {
     let start = i.loc();
     let (i, direction) = direction(i)?;
     commit! {
@@ -503,16 +510,16 @@ fn message_group<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'file
 }
 
 #[derive(Debug)]
-pub struct ProtocolItem<'filepath> {
-    pub path: Vec<Spanned<'filepath, String>>,
-    pub nested: Option<Spanned<'filepath, Nesting>>,
-    pub send_semantics: Spanned<'filepath, SendSemantics>,
-    pub managers: Option<Spanned<'filepath, Vec<Spanned<'filepath, String>>>>,
-    pub manages: Vec<Spanned<'filepath, Spanned<'filepath, String>>>,
-    pub groups: Vec<Spanned<'filepath, MessageGroup<'filepath>>>,
+pub struct ProtocolItem {
+    pub path: Vec<Spanned<String>>,
+    pub nested: Option<Spanned<Nesting>>,
+    pub send_semantics: Spanned<SendSemantics>,
+    pub managers: Option<Spanned<Vec<Spanned<String>>>>,
+    pub manages: Vec<Spanned<Spanned<String>>>,
+    pub groups: Vec<Spanned<MessageGroup>>,
 }
 
-fn protocol_nested<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, (Spanned<'filepath, Nesting>, Spanned<'filepath, SendSemantics>)> {
+fn protocol_nested(i: In) -> PResult<(Spanned<Nesting>, Spanned<SendSemantics>)> {
     let (i, _) = kw(i, "nested")?;
     commit! {
         let (i, _) = punct(i, "(")?;
@@ -522,15 +529,15 @@ fn protocol_nested<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'fi
         let ss_start = i.loc();
         let (i, ss) = any!(
             i, "send semantics (async or sync)",
-            kw(i, "async") => SendSemantics::Async,
-            kw(i, "sync") => SendSemantics::Sync,
+            kw(i.clone(), "async") => SendSemantics::Async,
+            kw(i.clone(), "sync") => SendSemantics::Sync,
         )?;
         let ss_end = i.loc();
         Ok((i, (n, Spanned::new(Span { start: ss_start, end: ss_end}, ss))))
     }
 }
 
-fn managers<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Vec<Spanned<'filepath, String>>>> {
+fn managers(i: In) -> PResult<Spanned<Vec<Spanned<String>>>> {
     let start = i.loc();
     let (i, _) = kw(i, "manager")?;
     commit! {
@@ -541,7 +548,7 @@ fn managers<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath,
     }
 }
 
-fn manages<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, Spanned<'filepath, String>>> {
+fn manages(i: In) -> PResult<Spanned<Spanned<String>>> {
     let start = i.loc();
     let (i, _) = kw(i, "manages")?;
     commit! {
@@ -552,18 +559,19 @@ fn manages<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, 
     }
 }
 
-fn protocol_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, ProtocolItem<'filepath>>> {
+#[allow(needless_pass_by_value)]
+fn protocol_item(i: In) -> PResult<Spanned<ProtocolItem>> {
     let start = i.loc();
     let mut ss_span = Span::new(i.loc().file);
 
     let ss_start = i.loc();
     let (i, (nested, send_semantics)) = any!(
         i, "protocol item prefixes",
-        kw(i, "async") => |_x| (None, SendSemantics::Async),
-        kw(i, "sync") => |_x| (None, SendSemantics::Sync),
-        kw(i, "intr") => |_x| (None, SendSemantics::Intr),
-        protocol_nested(i) => |x| {ss_span = x.1.span; (Some(x.0), x.1.data)},
-        Ok((i, ())) => |_x| (None, SendSemantics::Async),
+        kw(i.clone(), "async") => |_x| (None, SendSemantics::Async),
+        kw(i.clone(), "sync") => |_x| (None, SendSemantics::Sync),
+        kw(i.clone(), "intr") => |_x| (None, SendSemantics::Intr),
+        protocol_nested(i.clone()) => |x| {ss_span = x.1.span; (Some(x.0), x.1.data)},
+        Ok((i.clone(), ())) => |_x| (None, SendSemantics::Async),
     )?;
     let ss_end = i.loc();
 
@@ -575,7 +583,7 @@ fn protocol_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'file
     commit! {
         let (i, name) = ident(i)?;
         let (i, _) = punct(i, "{")?;
-        let (i, managers) = maybe(i, managers(i))?;
+        let (i, managers) = maybe(i.clone(), managers(i))?;
         let (i, manages) = many(i, manages)?;
         let (i, groups) = many(i, message_group)?;
         let (i, _) = punct(i, "}")?;
@@ -595,13 +603,13 @@ fn protocol_item<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'file
 
 #[derive(Debug)]
 #[allow(large_enum_variant)]
-pub enum Item<'filepath> {
-    Struct(Spanned<'filepath, StructItem<'filepath>>),
-    Union(Spanned<'filepath, UnionItem<'filepath>>),
-    Protocol(Spanned<'filepath, ProtocolItem<'filepath>>),
+pub enum Item {
+    Struct(Spanned<StructItem>),
+    Union(Spanned<UnionItem>),
+    Protocol(Spanned<ProtocolItem>),
 }
 
-fn namespace<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Vec<Item<'filepath>>> {
+fn namespace(i: In) -> PResult<Vec<Item>> {
     let (i, _) = kw(i, "namespace")?;
 
     commit! {
@@ -623,27 +631,27 @@ fn namespace<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath
     }
 }
 
-fn items<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Vec<Item<'filepath>>> {
+fn items(i: In) -> PResult<Vec<Item>> {
     let mut v = Vec::new();
     drive!(i, any!(
         i, "item (struct, union, protocol, or namespace)",
-        struct_item(i) => |x| v.push(Item::Struct(x)),
-        union_item(i) => |x| v.push(Item::Union(x)),
-        protocol_item(i) => |x| v.push(Item::Protocol(x)),
-        namespace(i) => |x| v.extend(x),
+        struct_item(i.clone()) => |x| v.push(Item::Struct(x)),
+        union_item(i.clone()) => |x| v.push(Item::Union(x)),
+        protocol_item(i.clone()) => |x| v.push(Item::Protocol(x)),
+        namespace(i.clone()) => |x| v.extend(x),
     ));
     Ok((i, v))
 }
 
 #[derive(Debug)]
-pub struct TranslationUnit<'filepath> {
-    pub cxx_includes: Vec<Spanned<'filepath, CxxInclude<'filepath>>>,
-    pub includes: Vec<Spanned<'filepath, Include<'filepath>>>,
-    pub usings: Vec<Spanned<'filepath, Using<'filepath>>>,
-    pub items: Vec<Item<'filepath>>,
+pub struct TranslationUnit {
+    pub cxx_includes: Vec<Spanned<CxxInclude>>,
+    pub includes: Vec<Spanned<Include>>,
+    pub usings: Vec<Spanned<Using>>,
+    pub items: Vec<Item>,
 }
 
-fn translation_unit<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, TranslationUnit<'filepath>>> {
+fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
     // Prelude.
     let mut usings = Vec::new();
     let mut includes = Vec::new();
@@ -653,9 +661,9 @@ fn translation_unit<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'f
 
     drive!(i, any!(
         i, "include or using declaration",
-        using(i) => |u| usings.push(u),
-        include(i) => |u| includes.push(u),
-        cxx_include(i) => |u| cxx_includes.push(u),
+        using(i.clone()) => |u| usings.push(u),
+        include(i.clone()) => |u| includes.push(u),
+        cxx_include(i.clone()) => |u| cxx_includes.push(u),
     ));
 
     // Body.
@@ -678,8 +686,8 @@ fn translation_unit<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'f
 }
 
 /// Entry point - parses a whole translation unit.
-pub fn parse<'src, 'filepath>(src: &'src str, file: &'filepath Path) -> Result<Spanned<'filepath, TranslationUnit<'filepath>>, Error> {
-    match translation_unit(In::new(src, file)) {
+pub fn parse<'filepath>(src: &str, file: &'filepath Path) -> Result<Spanned<TranslationUnit>, Error> {
+    match translation_unit(In::new(src, file.to_path_buf())) {
         Ok((_, v)) => Ok(v),
         Err(err) => {
             // Get the line where the error occurred.

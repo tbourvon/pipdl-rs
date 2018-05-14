@@ -4,17 +4,17 @@
 
 //! Fairly minimal recursive-descent parser helper functions and types.
 
-use std::path::Path;
+use std::path::PathBuf;
 
-#[derive(Copy, Clone, Debug)]
-pub struct Location<'filepath> {
+#[derive(Clone, Debug)]
+pub struct Location {
     pub line: usize,
     pub col: usize,
-    pub file: &'filepath Path,
+    pub file: PathBuf,
 }
 
-impl<'filepath> Location<'filepath> {
-    fn new(file: &'filepath Path) -> Self {
+impl Location {
+    fn new(file: PathBuf) -> Self {
         Location {
             line: 0,
             col: 0,
@@ -27,16 +27,16 @@ impl<'filepath> Location<'filepath> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Span<'filepath> {
-    pub start: Location<'filepath>,
-    pub end: Location<'filepath>,
+#[derive(Clone, Debug)]
+pub struct Span {
+    pub start: Location,
+    pub end: Location,
 }
 
-impl<'filepath> Span<'filepath> {
-    pub fn new(file: &'filepath Path) -> Self {
+impl Span {
+    pub fn new(file: PathBuf) -> Self {
         Span {
-            start: Location::new(file),
+            start: Location::new(file.clone()),
             end: Location::new(file),
         }
     }
@@ -46,14 +46,14 @@ impl<'filepath> Span<'filepath> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Spanned<'filepath, T> {
+#[derive(Clone, Debug)]
+pub struct Spanned<T> {
     pub data: T,
-    pub span: Span<'filepath>,
+    pub span: Span,
 }
 
-impl<'filepath, T> Spanned<'filepath, T> {
-    pub fn new(span: Span<'filepath>, data: T) -> Self {
+impl<T> Spanned<T> {
+    pub fn new(span: Span, data: T) -> Self {
         Spanned {data, span}
     }
 }
@@ -66,13 +66,13 @@ const FATAL_MASK: usize = ! OFF_MASK;
 
 /// An error produced by pipdl
 #[derive(Debug)]
-pub struct ParserError<'filepath> {
+pub struct ParserError {
     message: String,
     fatal: bool,
-    span: Span<'filepath>,
+    span: Span,
 }
 
-impl<'filepath> ParserError<'filepath> {
+impl ParserError {
     pub(crate) fn is_fatal(&self) -> bool {
         self.fatal
     }
@@ -83,7 +83,7 @@ impl<'filepath> ParserError<'filepath> {
     }
 
     pub(crate) fn span(&self) -> Span {
-        self.span
+        self.span.clone()
     }
 
     pub(crate) fn message(&self) -> &str {
@@ -141,7 +141,7 @@ macro_rules! drive {
 }
 
 /// The type of error used by internal parsers
-pub(crate) type PResult<'src, 'filepath, T> = Result<(In<'src, 'filepath>, T), ParserError<'filepath>>;
+pub(crate) type PResult<'src, T> = Result<(In<'src>, T), ParserError>;
 
 /// Specify that after this point, errors produced while parsing which are not
 /// handled should instead be treated as fatal parsing errors.
@@ -154,14 +154,14 @@ macro_rules! commit {
 
 /// This datastructure is used as the cursor type into the input source data. It
 /// holds the full source string, and the current offset.
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct In<'src, 'filepath> {
+#[derive(Clone, Debug)]
+pub(crate) struct In<'src> {
     src: &'src str,
     byte_offset: usize,
-    loc: Location<'filepath>,
+    loc: Location,
 }
-impl<'src, 'filepath> In<'src, 'filepath> {
-    pub(crate) fn new(s: &'src str, file: &'filepath Path) -> Self  {
+impl<'src> In<'src> {
+    pub(crate) fn new(s: &'src str, file: PathBuf) -> Self  {
         In { src: s, byte_offset: 0, loc: Location { line: 1, col: 0, file } }
     }
 
@@ -172,7 +172,7 @@ impl<'src, 'filepath> In<'src, 'filepath> {
 
     /// Move the cursor forward by `n` characters.
     pub(crate) fn advance(&self, n_chars: usize) -> Self {
-        let mut loc = self.loc;
+        let mut loc = self.loc.clone();
 
         let (n_bytes, last_c) = self.rest().char_indices().take(n_chars).inspect(|&(_, character)| {
             if character == '\n' {
@@ -191,28 +191,28 @@ impl<'src, 'filepath> In<'src, 'filepath> {
     }
 
     /// Produce a new non-fatal error result with the given expected value.
-    pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, ParserError<'filepath>> {
+    pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, ParserError> {
         assert!((self.byte_offset & FATAL_MASK) == 0, "Offset is too large!");
         Err(ParserError {
             message: format!("Expected {}", expected),
             fatal: false,
-            span: Span { start: self.loc, end: self.loc },
+            span: Span { start: self.loc.clone(), end: self.loc.clone() },
         })
     }
 
-    pub(crate) fn loc(&self) -> Location<'filepath> {
-        self.loc
+    pub(crate) fn loc(&self) -> Location {
+        self.loc.clone()
     }
 }
 
 /// Repeatedly run f, collecting results into a vec. Returns an error if a fatal
 /// error is produced while parsing.
-pub(crate) fn many<'src, 'filepath, F, R>(i: In<'src, 'filepath>, mut f: F) -> PResult<'src, 'filepath, Vec<R>>
+pub(crate) fn many<'src, F, R>(i: In<'src>, mut f: F) -> PResult<'src, Vec<R>>
 where
-    F: FnMut(In<'src, 'filepath>) -> PResult<'src, 'filepath, R>,
+    F: FnMut(In<'src>) -> PResult<'src, R>,
 {
     let mut v = Vec::new();
-    drive!(i, match f(i) {
+    drive!(i, match f(i.clone()) {
         Ok((i, x)) => {
             v.push(x);
             Ok((i, ()))
@@ -224,19 +224,19 @@ where
 
 /// Repeatedly run f, followed by parsing the seperator sep. Returns an error if
 /// a fatal error is produced while parsing.
-pub(crate) fn sep<'src, 'filepath, Parser, Ret>(
-    i: In<'src, 'filepath>,
+pub(crate) fn sep<'src, Parser, Ret>(
+    i: In<'src>,
     mut parser: Parser,
     sep: &'static str,
-) -> PResult<'src, 'filepath, Vec<Ret>>
+) -> PResult<'src, Vec<Ret>>
 where
-    Parser: FnMut(In<'src, 'filepath>) -> PResult<'src, 'filepath, Ret>,
+    Parser: FnMut(In<'src>) -> PResult<'src, Ret>,
 {
     let mut return_vector = Vec::new();
-    drive!(i, match parser(i) {
+    drive!(i, match parser(i.clone()) {
         Ok((i, result)) => {
             return_vector.push(result);
-            match punct(i, sep) {
+            match punct(i.clone(), sep) {
                 Ok(o) => Ok(o),
                 Err(_) => return Ok((i, return_vector)),
             }
@@ -247,7 +247,7 @@ where
 }
 
 /// Skip any leading whitespace, including comments
-pub(crate) fn skip_ws<'src, 'filepath>(mut i: In<'src, 'filepath>) -> Result<In<'src, 'filepath>, ParserError<'filepath>> {
+pub(crate) fn skip_ws(mut i: In) -> Result<In, ParserError> {
     loop {
         if i.rest().is_empty() {
             break;
@@ -289,7 +289,7 @@ pub(crate) fn skip_ws<'src, 'filepath>(mut i: In<'src, 'filepath>) -> Result<In<
 }
 
 /// Read an identifier as a string.
-pub(crate) fn ident<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, String>> {
+pub(crate) fn ident(i: In) -> PResult<Spanned<String>> {
     let i = skip_ws(i)?;
     let start = i.loc();
     let (end_char, end_byte) = i.rest()
@@ -315,17 +315,19 @@ pub(crate) fn ident<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'f
 }
 
 /// Parse a specific keyword.
-pub(crate) fn kw<'src, 'filepath>(i: In<'src, 'filepath>, kw: &'static str) -> PResult<'src, 'filepath, Spanned<'filepath, ()>> {
-    let (j, id) = ident(i)?;
+pub(crate) fn kw<'src>(i: In<'src>, kw: &'static str) -> PResult<'src, Spanned<()>> {
+    let error_message = i.expected(kw);
+
+    let (i, id) = ident(i)?;
     if id.data == kw {
-        Ok((j, Spanned::new(id.span, ())))
+        Ok((i, Spanned::new(id.span, ())))
     } else {
-        i.expected(kw)
+        error_message
     }
 }
 
 /// Parse punctuation.
-pub(crate) fn punct<'src, 'filepath>(i: In<'src, 'filepath>, p: &'static str) -> PResult<'src, 'filepath, Spanned<'filepath, ()>> {
+pub(crate) fn punct<'src>(i: In<'src>, p: &'static str) -> PResult<'src, Spanned<()>> {
     let i = skip_ws(i)?;
     let start = i.loc();
     if i.rest().starts_with(p) {
@@ -339,10 +341,10 @@ pub(crate) fn punct<'src, 'filepath>(i: In<'src, 'filepath>, p: &'static str) ->
 
 /// Try to parse the inner value, and return Some() if it succeeded, None if it
 /// failed non-fatally, and an error if it failed fatally.
-pub(crate) fn maybe<'src, 'filepath, T>(
-    i: In<'src, 'filepath>,
-    r: PResult<'src, 'filepath, T>
-) -> PResult<'src, 'filepath, Option<T>> {
+pub(crate) fn maybe<'src, T>(
+    i: In<'src>,
+    r: PResult<'src, T>
+) -> PResult<'src, Option<T>> {
     match r {
         Ok((i, x)) => Ok((i, Some(x))),
         Err(e) => if e.is_fatal() {
@@ -354,7 +356,7 @@ pub(crate) fn maybe<'src, 'filepath, T>(
 }
 
 /// Parse a string literal.
-pub(crate) fn string<'src, 'filepath>(i: In<'src, 'filepath>) -> PResult<'src, 'filepath, Spanned<'filepath, String>> {
+pub(crate) fn string(i: In) -> PResult<Spanned<String>> {
     let mut s = String::new();
     let start = i.loc();
     let (i, _) = punct(i, "\"")?;
