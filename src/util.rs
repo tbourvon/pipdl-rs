@@ -148,7 +148,8 @@ pub(crate) type PResult<'src, T> = Result<(In<'src>, T), ParserError>;
 macro_rules! commit {
     ($($e:tt)*) => {
         // Evaluate the inner expression, transforming errors into fatal errors.
-        ({ $($e)* }).map_err($crate::util::ParserError::make_fatal)
+        let eval = || { $($e)* };
+        eval().map_err($crate::util::ParserError::make_fatal)
     }
 }
 
