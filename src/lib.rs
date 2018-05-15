@@ -194,13 +194,15 @@ pub struct Type {
 }
 
 fn ty(i: In) -> PResult<Spanned<Type>> {
+    fn array_brackets(i: In) -> PResult<Spanned<()>> {
+        let (i, _) = punct(i, "[")?;
+        commit! { punct(i, "]") }
+    }
+
     let start = i.loc();
     let (i, nullable) = maybe(i.clone(), kw(i, "nullable"))?;
     let (i, name) = cxx_path_seg(i)?;
-    let (i, array) = maybe(i.clone(), {
-        let (i, _) = punct(i, "[")?;
-        commit! { punct(i, "]") }
-    })?;
+    let (i, array) = maybe(i.clone(), array_brackets(i))?;
 
     let end = i.loc();
 
@@ -674,7 +676,7 @@ fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
     // Make sure we're at EOF
     let i = skip_ws(i)?;
     if !i.rest().is_empty() {
-        return i.expected("item (struct, union, protocol, or namespace)");
+        return i.expected("item (struct, union, protocol, or namespace) lol");
     }
 
     let end = i.loc();
