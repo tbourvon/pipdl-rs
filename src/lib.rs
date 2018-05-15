@@ -512,20 +512,22 @@ fn message_group(i: In) -> PResult<Spanned<MessageGroup>> {
 #[derive(Debug, Clone)]
 pub struct ProtocolItem {
     pub path: Vec<Spanned<String>>,
-    pub nested: Option<Spanned<Nesting>>,
+    pub nested: Option<Spanned<Spanned<Nesting>>>,
     pub send_semantics: Spanned<SendSemantics>,
     pub managers: Option<Spanned<Vec<Spanned<String>>>>,
     pub manages: Vec<Spanned<Spanned<String>>>,
     pub groups: Vec<Spanned<MessageGroup>>,
 }
 
-fn protocol_nested(i: In) -> PResult<(Spanned<Nesting>, Spanned<SendSemantics>)> {
+fn protocol_nested(i: In) -> PResult<(Spanned<Spanned<Nesting>>, Spanned<SendSemantics>)> {
+    let nested_start = i.loc();
     let (i, _) = kw(i, "nested")?;
     commit! {
         let (i, _) = punct(i, "(")?;
         let (i, _) = kw(i, "upto")?;
         let (i, n) = nesting(i)?;
         let (i, _) = punct(i, ")")?;
+        let nested_end = i.loc();
         let ss_start = i.loc();
         let (i, ss) = any!(
             i, "send semantics (async or sync)",
@@ -533,7 +535,7 @@ fn protocol_nested(i: In) -> PResult<(Spanned<Nesting>, Spanned<SendSemantics>)>
             kw(i.clone(), "sync") => SendSemantics::Sync,
         )?;
         let ss_end = i.loc();
-        Ok((i, (n, Spanned::new(Span { start: ss_start, end: ss_end}, ss))))
+        Ok((i, (Spanned::new(Span { start: nested_start, end: nested_end }, n), Spanned::new(Span { start: ss_start, end: ss_end}, ss))))
     }
 }
 
