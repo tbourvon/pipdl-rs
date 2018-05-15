@@ -676,7 +676,7 @@ fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
     // Make sure we're at EOF
     let i = skip_ws(i)?;
     if !i.rest().is_empty() {
-        return i.expected("item (struct, union, protocol, or namespace) lol");
+        return i.expected("item (struct, union, protocol, or namespace)");
     }
 
     let end = i.loc();
