@@ -5,6 +5,7 @@
 //! Fairly minimal recursive-descent parser helper functions and types.
 
 use std::path::PathBuf;
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Location {
@@ -65,7 +66,6 @@ const OFF_MASK: usize = <usize>::max_value() / 2;
 const FATAL_MASK: usize = ! OFF_MASK;
 
 /// An error produced by pipdl
-#[derive(Debug)]
 pub struct ParserError {
     message: String,
     fatal: bool,
@@ -88,6 +88,18 @@ impl ParserError {
 
     pub(crate) fn message(&self) -> &str {
         &self.message
+    }
+}
+
+impl fmt::Debug for ParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Error")
+            .field("file", &self.span.start.file)
+            .field("start_line", &self.span.start.line)
+            .field("start_column", &self.span.start.col)
+            .field("end_line", &self.span.end.line)
+            .field("end_column", &self.span.end.col)
+            .finish()
     }
 }
 
@@ -194,8 +206,19 @@ impl<'src> In<'src> {
     /// Produce a new non-fatal error result with the given expected value.
     pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, ParserError> {
         assert!((self.byte_offset & FATAL_MASK) == 0, "Offset is too large!");
+
+         // Get the line where the error occurred.
+        let text = self.src.lines().nth(self.loc.line - 1)
+                       .unwrap_or(""); // Usually happens when the error occurs on the last, empty line
+
+        // Format the final error message.
+        let message = format!("{}\n\
+                                | {}\n{:~>off$}^\n",
+                                format!("Expected {}", expected),
+                                text, "", off=self.loc.col + 2);
+
         Err(ParserError {
-            message: format!("Expected {}", expected),
+            message,
             fatal: false,
             span: Span { start: self.loc.clone(), end: self.loc.clone() },
         })

@@ -13,44 +13,34 @@
 
 use std::fmt;
 use std::error;
-use std::path::Path;
+use std::path::{Path};
 
 #[macro_use]
 pub mod util;
 pub use util::*;
 
-struct ErrorInner {
-    line: usize,
-    column: usize,
-    message: String,
-}
-
 /// Public error type for messages with resolved type information.
-pub struct Error(Box<ErrorInner>);
+pub struct Error(Box<ParserError>);
 
 impl Error {
-    /// Get the line and column of the parsing error.
-    pub fn line_column(&self) -> (usize, usize) {
-        (self.0.line, self.0.column)
+    pub fn span(&self) -> Span {
+        self.0.span()
     }
 }
 
 impl error::Error for Error {
-    fn description(&self) -> &str { &self.0.message }
+    fn description(&self) -> &str { &self.0.message() }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.message.fmt(f)
+        f.write_str(&format!("{}:{}:{}: error: {}", self.0.span().start.file.display(), self.0.span().start.line, self.0.span().start.col, self.0.message()))
     }
 }
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Error")
-            .field("line", &self.0.line)
-            .field("column", &self.0.column)
-            .finish()
+        self.0.fmt(f)
     }
 }
 
@@ -694,19 +684,7 @@ pub fn parse<'filepath>(src: &str, file: &'filepath Path) -> Result<Spanned<Tran
     match translation_unit(In::new(src, file.to_path_buf())) {
         Ok((_, v)) => Ok(v),
         Err(err) => {
-            // Get the line where the error occurred.
-            let text = src.lines().nth(err.span().start.line - 1)
-                          .unwrap_or(""); // Usually happens when the error occurs on the last, empty line
-
-            // Format the final error message.
-            let message = format!("Parse Error @ {}:{}: {}\n\
-                                   | {}\n{:~>off$}^\n",
-                                  err.span().start.line, err.span().start.col, err.message(),
-                                  text, "", off=err.span().start.col + 2);
-
-            Err(Error(Box::new(ErrorInner {
-                line: err.span().start.line, column: err.span().start.col, message
-            })))
+            Err(Error(Box::new(err)))
         }
     }
 }
