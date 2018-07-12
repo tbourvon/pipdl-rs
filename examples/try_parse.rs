@@ -4,23 +4,27 @@
 
 extern crate pipdl;
 
-use std::fs::File;
 use std::env::args;
+use std::fs::File;
 use std::io::Read;
-use std::path::Path;
 
 fn run() -> Result<(), Box<std::error::Error>> {
     let filename = args().nth(1).ok_or("Filename expected")?;
     let mut f = File::open(&filename)?;
     let mut s = String::new();
     f.read_to_string(&mut s)?;
-    if let Err(e) = pipdl::parse(&s, Path::new(&filename)) {
-        eprintln!("{}", e);
+    if let Err(e) = pipdl::parse(&s, &filename) {
         return Err(Box::new(e));
     }
     Ok(())
 }
 
 fn main() {
-    run().expect("Main error");
+    ::std::process::exit(match run() {
+        Ok(_) => 0,
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    })
 }

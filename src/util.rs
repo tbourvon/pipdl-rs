@@ -4,18 +4,17 @@
 
 //! Fairly minimal recursive-descent parser helper functions and types.
 
-use std::path::PathBuf;
 use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Location {
     pub line: usize,
     pub col: usize,
-    pub file: PathBuf,
+    pub file: String,
 }
 
 impl Location {
-    fn new(file: PathBuf) -> Self {
+    fn new(file: String) -> Self {
         Location {
             line: 0,
             col: 0,
@@ -35,7 +34,7 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new(file: PathBuf) -> Self {
+    pub fn new(file: String) -> Self {
         Span {
             start: Location::new(file.clone()),
             end: Location::new(file),
@@ -55,7 +54,7 @@ pub struct Spanned<T> {
 
 impl<T> Spanned<T> {
     pub fn new(span: Span, data: T) -> Self {
-        Spanned {data, span}
+        Spanned { data, span }
     }
 }
 
@@ -63,7 +62,7 @@ impl<T> Spanned<T> {
 const OFF_MASK: usize = <usize>::max_value() / 2;
 
 /// Only the high bit in usize.
-const FATAL_MASK: usize = ! OFF_MASK;
+const FATAL_MASK: usize = !OFF_MASK;
 
 /// An error produced by pipdl
 pub struct ParserError {
@@ -146,10 +145,10 @@ macro_rules! drive {
                     return Err(e);
                 } else {
                     break;
-                }
+                },
             }
         }
-    }
+    };
 }
 
 /// The type of error used by internal parsers
@@ -174,8 +173,16 @@ pub(crate) struct In<'src> {
     loc: Location,
 }
 impl<'src> In<'src> {
-    pub(crate) fn new(s: &'src str, file: PathBuf) -> Self  {
-        In { src: s, byte_offset: 0, loc: Location { line: 1, col: 0, file } }
+    pub(crate) fn new(s: &'src str, file: String) -> Self {
+        In {
+            src: s,
+            byte_offset: 0,
+            loc: Location {
+                line: 1,
+                col: 0,
+                file,
+            },
+        }
     }
 
     /// The remaining string in the source file.
@@ -187,40 +194,59 @@ impl<'src> In<'src> {
     pub(crate) fn advance(&self, n_chars: usize) -> Self {
         let mut loc = self.loc.clone();
 
-        let (n_bytes, last_c) = self.rest().char_indices().take(n_chars).inspect(|&(_, character)| {
-            if character == '\n' {
-                loc.line += 1;
-                loc.col = 0;
-            } else {
-                loc.col += 1;
-            }
-        }).last().expect("No characters remaining in advance");
+        let (n_bytes, last_c) = self
+            .rest()
+            .char_indices()
+            .take(n_chars)
+            .inspect(|&(_, character)| {
+                if character == '\n' {
+                    loc.line += 1;
+                    loc.col = 0;
+                } else {
+                    loc.col += 1;
+                }
+            })
+            .last()
+            .expect("No characters remaining in advance");
 
-        let byte_offset = self.byte_offset.checked_add(n_bytes + last_c.len_utf8()).expect("Failed checked add");
+        let byte_offset = self
+            .byte_offset
+            .checked_add(n_bytes + last_c.len_utf8())
+            .expect("Failed checked add");
 
         assert!(byte_offset <= self.src.len());
 
-        In { src: self.src, byte_offset, loc }
+        In {
+            src: self.src,
+            byte_offset,
+            loc,
+        }
     }
 
     /// Produce a new non-fatal error result with the given expected value.
     pub(crate) fn expected<T>(&self, expected: &'static str) -> Result<T, ParserError> {
         assert!((self.byte_offset & FATAL_MASK) == 0, "Offset is too large!");
 
-         // Get the line where the error occurred.
-        let text = self.src.lines().nth(self.loc.line - 1)
-                       .unwrap_or(""); // Usually happens when the error occurs on the last, empty line
+        // Get the line where the error occurred.
+        let text = self.src.lines().nth(self.loc.line - 1).unwrap_or(""); // Usually happens when the error occurs on the last, empty line
 
         // Format the final error message.
-        let message = format!("{}\n\
-                                | {}\n{:~>off$}^\n",
-                                format!("Expected {}", expected),
-                                text, "", off=self.loc.col + 2);
+        let message = format!(
+            "{}\n\
+             | {}\n{:~>off$}^\n",
+            format!("Expected {}", expected),
+            text,
+            "",
+            off = self.loc.col + 2
+        );
 
         Err(ParserError {
             message,
             fatal: false,
-            span: Span { start: self.loc.clone(), end: self.loc.clone() },
+            span: Span {
+                start: self.loc.clone(),
+                end: self.loc.clone(),
+            },
         })
     }
 
@@ -236,13 +262,16 @@ where
     F: FnMut(In<'src>) -> PResult<'src, R>,
 {
     let mut v = Vec::new();
-    drive!(i, match f(i.clone()) {
-        Ok((i, x)) => {
-            v.push(x);
-            Ok((i, ()))
+    drive!(
+        i,
+        match f(i.clone()) {
+            Ok((i, x)) => {
+                v.push(x);
+                Ok((i, ()))
+            }
+            Err(e) => Err(e),
         }
-        Err(e) => Err(e),
-    });
+    );
     Ok((i, v))
 }
 
@@ -257,16 +286,19 @@ where
     Parser: FnMut(In<'src>) -> PResult<'src, Ret>,
 {
     let mut return_vector = Vec::new();
-    drive!(i, match parser(i.clone()) {
-        Ok((i, result)) => {
-            return_vector.push(result);
-            match punct(i.clone(), sep) {
-                Ok(o) => Ok(o),
-                Err(_) => return Ok((i, return_vector)),
+    drive!(
+        i,
+        match parser(i.clone()) {
+            Ok((i, result)) => {
+                return_vector.push(result);
+                match punct(i.clone(), sep) {
+                    Ok(o) => Ok(o),
+                    Err(_) => return Ok((i, return_vector)),
+                }
             }
+            Err(e) => Err(e),
         }
-        Err(e) => Err(e),
-    });
+    );
     Ok((i, return_vector))
 }
 
@@ -277,7 +309,11 @@ pub(crate) fn skip_ws(mut i: In) -> Result<In, ParserError> {
             break;
         }
 
-        let c = i.rest().chars().next().expect("No characters remaining when skipping ws");
+        let c = i
+            .rest()
+            .chars()
+            .next()
+            .expect("No characters remaining when skipping ws");
         if c.is_whitespace() {
             i = i.advance(1);
             continue;
@@ -316,7 +352,8 @@ pub(crate) fn skip_ws(mut i: In) -> Result<In, ParserError> {
 pub(crate) fn ident(i: In) -> PResult<Spanned<String>> {
     let i = skip_ws(i)?;
     let start = i.loc();
-    let (end_char, end_byte) = i.rest()
+    let (end_char, end_byte) = i
+        .rest()
         .char_indices()
         .enumerate()
         .skip_while(|&(_, (b_idx, c))| match c {
@@ -335,7 +372,10 @@ pub(crate) fn ident(i: In) -> PResult<Spanned<String>> {
     let j = i.advance(end_char);
     let end = j.loc();
 
-    Ok((j, Spanned::new(Span {start, end}, i.rest()[..end_byte].to_owned())))
+    Ok((
+        j,
+        Spanned::new(Span { start, end }, i.rest()[..end_byte].to_owned()),
+    ))
 }
 
 /// Parse a specific keyword.
@@ -365,17 +405,14 @@ pub(crate) fn punct<'src>(i: In<'src>, p: &'static str) -> PResult<'src, Spanned
 
 /// Try to parse the inner value, and return Some() if it succeeded, None if it
 /// failed non-fatally, and an error if it failed fatally.
-pub(crate) fn maybe<'src, T>(
-    i: In<'src>,
-    r: PResult<'src, T>
-) -> PResult<'src, Option<T>> {
+pub(crate) fn maybe<'src, T>(i: In<'src>, r: PResult<'src, T>) -> PResult<'src, Option<T>> {
     match r {
         Ok((i, x)) => Ok((i, Some(x))),
         Err(e) => if e.is_fatal() {
             Err(e)
         } else {
             Ok((i, None))
-        }
+        },
     }
 }
 
@@ -390,8 +427,8 @@ pub(crate) fn string(i: In) -> PResult<Spanned<String>> {
             '"' => {
                 let i = i.advance(char_offset + 1);
                 let end = i.loc();
-                return Ok((i, Spanned::new(Span {start, end}, s)))
-            },
+                return Ok((i, Spanned::new(Span { start, end }, s)));
+            }
             '\\' => match chars.next() {
                 Some((_, 'n')) => s.push('\n'),
                 Some((_, 'r')) => s.push('\r'),
@@ -400,9 +437,12 @@ pub(crate) fn string(i: In) -> PResult<Spanned<String>> {
                 Some((_, '\'')) => s.push('\''),
                 Some((_, '"')) => s.push('"'),
                 Some((_, '0')) => s.push('\0'),
-                _ => return i.advance(char_offset)
-                    .expected("valid escape (\\n, \\r, \\t, \\\\, \\', \\\", or \\0)"),
-            }
+                _ => {
+                    return i
+                        .advance(char_offset)
+                        .expected("valid escape (\\n, \\r, \\t, \\\\, \\', \\\", or \\0)")
+                }
+            },
             x => s.push(x),
         }
     }

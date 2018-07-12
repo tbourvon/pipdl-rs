@@ -6,14 +6,12 @@
 //! have some featres which most languages would have, such as unicode support
 //! in identifiers, as it is unnecessary for our usecase.
 
-
 // Our code is Clippy aware, so we disable warnings for unknown lints
 // which are triggered when we silence a clippy lint
 #![allow(unknown_lints)]
 
-use std::fmt;
 use std::error;
-use std::path::{Path};
+use std::fmt;
 
 #[macro_use]
 pub mod util;
@@ -29,12 +27,20 @@ impl Error {
 }
 
 impl error::Error for Error {
-    fn description(&self) -> &str { &self.0.message() }
+    fn description(&self) -> &str {
+        &self.0.message()
+    }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&format!("{}:{}:{}: error: {}", self.0.span().start.file.display(), self.0.span().start.line, self.0.span().start.col, self.0.message()))
+        f.write_str(&format!(
+            "{}:{}:{}: error: {}",
+            self.0.span().start.file,
+            self.0.span().start.line,
+            self.0.span().start.col,
+            self.0.message()
+        ))
     }
 }
 
@@ -76,18 +82,20 @@ fn include(i: In) -> PResult<Spanned<Include>> {
     let common_end_code = |i, id| {
         let (i, _) = punct(i, ";")?;
         let end = i.loc();
-        Ok((i, Spanned::new(Span { start, end }, Include {
-            protocol: pcol,
-            id,
-        })))
+        Ok((
+            i,
+            Spanned::new(Span { start, end }, Include { protocol: pcol, id }),
+        ))
     };
 
-    if pcol_is_some { // If we have the protocol keyword, then it can't be a C++ include anymore, and we start committing
+    if pcol_is_some {
+        // If we have the protocol keyword, then it can't be a C++ include anymore, and we start committing
         commit! {
             let (i, id) = ident(i)?;
             common_end_code(i, id)
         }
-    } else { // Otherwise we first parse the ident
+    } else {
+        // Otherwise we first parse the ident
         let (i, id) = ident(i)?;
         commit! {
             common_end_code(i, id)
@@ -125,10 +133,10 @@ fn cxx_path_seg(i: In) -> PResult<Spanned<CxxPathSeg>> {
     let (i, id) = ident(i)?;
     let (i, args) = maybe(i.clone(), template_args(i))?;
     let end = i.loc();
-    Ok((i, Spanned::new(Span { start, end }, CxxPathSeg {
-        id,
-        args,
-    })))
+    Ok((
+        i,
+        Spanned::new(Span { start, end }, CxxPathSeg { id, args }),
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -196,14 +204,17 @@ fn ty(i: In) -> PResult<Spanned<Type>> {
 
     let end = i.loc();
 
-    Ok((i, Spanned::new(
-        Span { start, end },
-        Type {
-            is_nullable: nullable,
-            name,
-            is_array: array,
-        }
-    )))
+    Ok((
+        i,
+        Spanned::new(
+            Span { start, end },
+            Type {
+                is_nullable: nullable,
+                name,
+                is_array: array,
+            },
+        ),
+    ))
 }
 
 fn component(i: In) -> PResult<Spanned<Type>> {
@@ -298,7 +309,7 @@ fn nesting(i: In) -> PResult<Spanned<Nesting>> {
         kw(i.clone(), "inside_cpow") => Nesting::InsideCpow,
     )?;
     let end = i.loc();
-    Ok((i, Spanned::new(Span {start, end}, nesting)))
+    Ok((i, Spanned::new(Span { start, end }, nesting)))
 }
 
 #[derive(Debug, Clone)]
@@ -318,7 +329,7 @@ fn priority(i: In) -> PResult<Spanned<Priority>> {
         kw(i.clone(), "input") => Priority::Input,
     )?;
     let end = i.loc();
-    Ok((i, Spanned::new(Span {start, end}, priority)))
+    Ok((i, Spanned::new(Span { start, end }, priority)))
 }
 
 #[derive(Debug, Clone)]
@@ -345,7 +356,7 @@ fn message_modifier(i: In) -> PResult<Spanned<MessageModifier>> {
         kw(i.clone(), "compressall") => MessageModifier::CompressAll,
     )?;
     let end = i.loc();
-    Ok((i, Spanned::new(Span {start, end}, message_modifier)))
+    Ok((i, Spanned::new(Span { start, end }, message_modifier)))
 }
 
 #[derive(Debug, Clone)]
@@ -421,11 +432,14 @@ fn message_decl(i: In) -> PResult<Spanned<MessageDecl>> {
     // XXX(nika): This is really gross, maybe clean it up?
     let mut nested = None;
     let mut priority = None;
-    drive!(i, any!(
+    drive!(
+        i,
+        any!(
         i, "message prefix",
         message_prio(i.clone()) => |p| priority = Some(p),
         message_nested(i.clone()) => |n| nested = Some(n),
-    ));
+    )
+    );
 
     let send_semantics_start = i.loc();
     let (i, send_semantics) = any!(
@@ -570,7 +584,10 @@ fn protocol_item(i: In) -> PResult<Spanned<ProtocolItem>> {
     let ss_end = i.loc();
 
     if ss_span.is_null() {
-        ss_span = Span {start: ss_start, end: ss_end};
+        ss_span = Span {
+            start: ss_start,
+            end: ss_end,
+        };
     }
 
     let (i, _) = kw(i, "protocol")?;
@@ -627,13 +644,16 @@ fn namespace(i: In) -> PResult<Vec<Item>> {
 
 fn items(i: In) -> PResult<Vec<Item>> {
     let mut v = Vec::new();
-    drive!(i, any!(
+    drive!(
+        i,
+        any!(
         i, "item (struct, union, protocol, or namespace)",
         struct_item(i.clone()) => |x| v.push(Item::Struct(x)),
         union_item(i.clone()) => |x| v.push(Item::Union(x)),
         protocol_item(i.clone()) => |x| v.push(Item::Protocol(x)),
         namespace(i.clone()) => |x| v.extend(x),
-    ));
+    )
+    );
     Ok((i, v))
 }
 
@@ -653,12 +673,15 @@ fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
 
     let start = i.loc();
 
-    drive!(i, any!(
+    drive!(
+        i,
+        any!(
         i, "include or using declaration",
         using(i.clone()) => |u| usings.push(u),
         include(i.clone()) => |u| includes.push(u),
         cxx_include(i.clone()) => |u| cxx_includes.push(u),
-    ));
+    )
+    );
 
     // Body.
     let (i, items) = items(i)?;
@@ -671,20 +694,27 @@ fn translation_unit(i: In) -> PResult<Spanned<TranslationUnit>> {
 
     let end = i.loc();
 
-    Ok((i, Spanned::new(Span {start, end}, TranslationUnit {
-        cxx_includes,
-        includes,
-        usings,
-        items,
-    })))
+    Ok((
+        i,
+        Spanned::new(
+            Span { start, end },
+            TranslationUnit {
+                cxx_includes,
+                includes,
+                usings,
+                items,
+            },
+        ),
+    ))
 }
 
 /// Entry point - parses a whole translation unit.
-pub fn parse<'filepath>(src: &str, file: &'filepath Path) -> Result<Spanned<TranslationUnit>, Error> {
-    match translation_unit(In::new(src, file.to_path_buf())) {
+pub fn parse<'filepath>(
+    src: &str,
+    file: &'filepath str,
+) -> Result<Spanned<TranslationUnit>, Error> {
+    match translation_unit(In::new(src, file.to_owned())) {
         Ok((_, v)) => Ok(v),
-        Err(err) => {
-            Err(Error(Box::new(err)))
-        }
+        Err(err) => Err(Error(Box::new(err))),
     }
 }
